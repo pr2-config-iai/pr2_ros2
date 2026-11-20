@@ -428,3 +428,47 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   wrist motors and the flex gets 0, the 10% clamp, other actuators disabled, ROS 1's velocity
   braking above 3.6 rad/s, and a flex outside its soft limit stays at 0 (removing the zeroing makes
   that test fail with the -8 Nm ROS 1 would apply). Stage 2 sees the first real current.
+
+## D22: Actuator velocity over a window of encoder samples
+
+- **Status:** accepted (2026-11-20)
+- **Context:** `ethercat_hardware` (as ROS 1) takes the actuator velocity as the encoder difference
+  over one sample. With 1200 count encoders at 1 kHz one count per cycle is 0.04 to 0.16 rad/s at
+  the joints (wrist 0.044, head 0.105, elbow flex 0.145, upper arm roll 0.160), so the velocity
+  jumps in steps that size; the first wrist velocity runs read only 0.087 or 0.131 rad/s. Giskard
+  reads only positions from `/joint_states`; the velocity matters for the velocity controllers and
+  for plots.
+- **Decision:** `pr2_ros2_control` replaces each actuator's velocity, before the transmissions, by the
+  difference over the last `velocity_window` samples (default 10) of the raw encoder position
+  (position plus zero offset, which a calibration does not shift), timed with the boards' sample
+  timestamps. Exact at constant velocity, unaffected by a repeated sample from a dropped packet,
+  allocation free; steps 10 times finer for about 5 ms of delay. `velocity_window:=1` is ROS 1.
+  `ethercat_hardware` is unchanged (its own checks still see the single-sample value).
+- **Verified:** unit tests (`test/test_velocity_window.cpp`); on the robot the wrist velocity now
+  moves in 0.0044 rad/s steps, and reads exactly 0 at rest.
+
+## D23: Stage 3 of D20, velocity control of the right wrist
+
+- **Status:** accepted (2026-11-20)
+- **Context:** effort steps on the roll alone (stage 2) turned only one wrist motor: roll and flex
+  moved by equal and opposite amounts. The wrist is a differential; with 0 Nm on the flex nothing
+  makes the stuck motor turn. The velocity gains in `pr2_controller_configuration` (and IAI's copy)
+  are Willow Garage's and not trusted (no other group publishes its own); WG's calibration
+  controllers are the velocity PIDs proven on the hardware (wrist p 3, i 0.2).
+- **Results** (`pid_controller` on both wrist joints, flex reference 0, roll +-0.3 rad/s):
+  - P only (p 4), 0.5 Nm and then 1 Nm limit: still one motor. Neither joint reached the limit; the
+    two P terms balanced at about 0.6 Nm each with roll and flex both at 0.15 rad/s. A P-only
+    velocity loop yields to a steady load.
+  - p 4, i 5, 1 Nm limit, integral clamped to the limit with `conditional_integration`: pure roll,
+    +0.78 and -0.70 rad at 0.29 rad/s (reached in about 1 s) while the flex moved 0.005 rad in total.
+  - Jazzy's PID clamps its stored integral to `i_clamp` (ROS 1 without antiwindup integrates the
+    error beyond the clamp); neither knows the hardware component's effort limit, so the clamps are
+    set to it.
+- **Decision:** `config/controllers.yaml` gets `r_wrist_velocity_controller` with these provisional
+  gains (not started by the launch file); wrist joints are always velocity controlled together.
+- **Open:** the integral winds up while the motors are halted (it integrated the wrist being moved
+  by hand: +0.47 Nm on the flex at release) and holds about 0.5 Nm after a motion stops. Controllers
+  need a reset when the motors are halted or released, before velocity control is used for real.
+  A joint commanded outside its soft limit gets ROS 1's push back at the effort limit (seen at flex
+  +0.08 rad: -1 Nm). The joint effort read while the boards are off does not match their measured
+  currents; to check.
