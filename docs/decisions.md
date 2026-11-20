@@ -142,19 +142,18 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 
 ## D11: How the realtime loop gets its privileges
 
-- **Status:** open (2026-11-20)
+- **Status:** accepted (2026-11-20)
 - **Context:** `pr2_control_node` and `read_only_check` need `CAP_NET_RAW` (raw EtherCAT socket),
-  `CAP_IPC_LOCK` (`mlockall`) and `CAP_SYS_NICE` (SCHED_FIFO). Today they get file capabilities via
-  `sudo setcap`, which every rebuild removes. File capabilities also put the process in the dynamic
-  loader's secure mode, which ignores `LD_LIBRARY_PATH`, so `pr2_control_node` carries an absolute
-  RPATH built from the build environment. ROS 1 uses `pr2-grant`: a setuid-root helper that copies
-  the program to `/var/tmp/granted`, sets file capabilities (including `CAP_NET_ADMIN`) on the copy
-  and runs it.
+  `CAP_IPC_LOCK` (`mlockall`) and `CAP_SYS_NICE` (SCHED_FIFO). Until now they got file capabilities
+  via `sudo setcap`, which every rebuild removes. File capabilities also put the process in the
+  dynamic loader's secure mode, which ignores `LD_LIBRARY_PATH`, so `pr2_control_node` carried an
+  absolute RPATH built from the build environment. ROS 1 uses `pr2-grant`: a setuid-root helper that
+  copies the program to `/var/tmp/granted`, sets file capabilities (including `CAP_NET_ADMIN`) on the
+  copy and runs it.
 - **Options:**
-  - **A. Our own setuid launcher with ambient capabilities** (proposed). A small root-owned helper,
-    installed once per container at `/usr/local/bin/pr2-rt-exec`, grants exactly the three
-    capabilities as ambient capabilities, drops root and runs the program. It's used as the launch
-    prefix.
+  - **A. Our own setuid launcher with ambient capabilities.** A small root-owned helper, installed
+    once per container, grants exactly the three capabilities as ambient capabilities, drops root
+    and runs the program. It's used as the launch prefix.
     - No `setcap` after builds.
     - Ambient capabilities do not trigger secure mode, so the RPATH workaround can go.
     - Restricted to one group (mode 4750) and absolute paths. Grants fewer privileges than
@@ -168,4 +167,46 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
     needs a password, and keeps file capabilities.
   - **D. `sudo setpriv` as launch prefix.** sudo strips `LD_LIBRARY_PATH` and other environment
     variables, so the ROS environment breaks.
-- **Decision:** _pending_.
+- **Decision:** A, in `pr2_ros2_control/tools/`:
+  - `pr2-rt-exec` (C, setuid root, `/usr/local/bin`, mode 4750, owner group only):
+    - limits the bounding set to the three capabilities;
+    - sets real, effective and saved uid/gid to the caller's;
+    - raises the three as permitted, effective, inheritable and ambient capabilities;
+    - execs the program, which must be given by absolute path.
+  - `pr2-rt` (shell): resolves the program through `PATH` and carries `LD_LIBRARY_PATH` across in
+    another variable, because glibc strips it from setuid programs. `pr2-rt-exec` restores it only
+    after root has been dropped.
+  - `install_pr2_rt.sh` installs both (one `sudo`).
+  - Usage: the launch file's `prefix='pr2-rt'` (launch argument `rt_prefix`);
+    `ros2 run --prefix pr2-rt ethercat_hardware read_only_check -i ecat0`.
+- **Verified:** a process started through it runs as `ease` with exactly
+  `cap_net_raw,cap_ipc_lock,cap_sys_nice` in every set (bounding included), keeps `LD_LIBRARY_PATH`,
+  and cannot `sudo`. Read-only run on `ecat0`: SCHED_FIFO 99, `/joint_states` match ROS 1 for all
+  45 joints, 0 dropped packets.
+- **Consequences:**
+  - The binaries carry no RPATH and no file capabilities.
+  - Dropping the RPATH workaround also dropped the node's link to the plugin library. That link had
+    hidden a plugin-loading problem, see D12.
+  - `LD_LIBRARY_PATH` still contains ROS 1 entries (`~/.bashrc`) after the ROS 2 ones, so a library
+    missing from ROS 2 could silently be taken from ROS 1 (several libraries share names). Not seen
+    so far; the old RPATH excluded them.
+
+## D12: Plugin classes in their own libraries
+
+- **Status:** accepted (2026-11-20)
+- **Context:** in ROS 1, `libethercat_hardware` contains both `EthercatHardware` and the device
+  driver plugins (WG0X, WG014, ...), and `libpr2_mechanism_model` both `Robot` and the transmission
+  plugins. class_loader assigns the plugin factories in a library to the loader that is active when
+  the library is loaded. Our hardware component links both core libraries, so they are loaded while
+  the hardware_interface loader loads it, and their factories end up owned by that loader. The
+  device loader then fails with "no factory for WG014", the transmission loader with "no factory for
+  SimpleTransmission". This only worked until now because `pr2_control_node` linked the plugin
+  library (for its RPATH, D11), which loaded everything at process start, before any loader existed.
+- **Decision:** the plugins move into separate libraries that nothing links:
+  `libethercat_hardware_devices` and `libpr2_mechanism_model_transmissions`. The plugin XML files
+  point at them. `pr2_ros2_control` recognises gripper transmissions by their URDF type instead of a
+  `dynamic_cast`, so it doesn't need to link the transmission library.
+- **Alternatives:** keep linking the plugin library into the node, which works only by load-order
+  accident and breaks again with any other host process (e.g. a stock `ros2_control_node`).
+- **Consequences:** anything that uses a device or transmission class directly (the unit tests)
+  links the plugin library.

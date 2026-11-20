@@ -21,6 +21,7 @@ unset ROS_DISTRO ROS_PACKAGE_PATH   # ~/.bashrc sources ROS 1, also inside the c
 source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y
 colcon build
+src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: realtime launcher (D11), needs sudo
 ```
 
 ## Status
