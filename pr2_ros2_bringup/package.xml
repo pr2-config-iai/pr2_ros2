@@ -13,6 +13,7 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>diagnostic_aggregator</exec_depend>
   <exec_depend>pr2_dashboard_aggregator</exec_depend>
+  <exec_depend>pr2_power_board</exec_depend>
   <exec_depend>rqt_pr2_dashboard</exec_depend>
   <exec_depend>urg_node</exec_depend>
 

@@ -309,3 +309,24 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   only, as in the ROS 1 recording.
 - **Consequences:** halting on every cycle counts as a halt request each time ("Halt motors service
   count" grows by 1000/s; ROS 1 shows 0). To be cleaned up when halt/reset become services.
+
+## D17: Power board driver ported, breakers switched only on request
+
+- **Status:** accepted (2026-11-20)
+- **Context:** with the e-stop released, the motor boards kept reporting undervoltage: the power
+  board puts the three motor breakers into standby when the e-stop is pressed and does not turn
+  them back on by itself. In ROS 1 they are re-enabled from the dashboard through `power_node2`.
+- **Decision:**
+  - Port `pr2_power_board/power_node2` like `ethercat_hardware` (D4): protocol code unchanged, ROS
+    interface on rclcpp, ROS 1 names kept (`/power_board/control`, `/power_board/state`,
+    `/diagnostics`). Fix ROS 1's no-op lock (see the package changelog).
+  - `pr2_ros2_bringup/launch/power_board.launch.py` starts it (address 10.68.0.50, respawn) as ROS 1
+    `robot.launch` did. Diagnostics get a "Power System" group (the battery items follow with the
+    battery driver).
+  - The driver sends status requests and, every 10 s like ROS 1, a fan command (duty 0 without
+    battery data, breaker fields untouched). Breakers are only switched through
+    `/power_board/control`, i.e. the dashboard's breaker buttons; the first switch is coordinated
+    with the person at the robot.
+- **Verified:** read-only: the board (serial 1002) reports 71.4 V input, all three breakers in
+  standby (17 V), runstop flags false with the e-stop pressed; the dashboard aggregator marks the
+  power board state valid.
