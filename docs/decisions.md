@@ -409,3 +409,22 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
     ROS 1 restarts running controllers when the motors come back from a halt; we need the same
     before stage 3.
   - Base, casters and grippers later (they need ROS 1's own controllers).
+
+## D21: Stage 1 of D20 done; the effort chain is checked by a unit test
+
+- **Status:** accepted (2026-11-20)
+- **Context:** D20 stage 1 was to see the wrist boards receive enable and current with the e-stop
+  pressed. That cannot happen: after a reset, `ethercat_hardware` finds boards in safety lockout
+  (no motor power) and halts all motors again ("Motors halted soon after reset (device error)"),
+  exactly as ROS 1. With the e-stop pressed the motors cannot be released at all.
+- **Verified on the robot (e-stop pressed, `commanding_enabled`, `r_wrist_roll_joint`, 10%):**
+  only `r_wrist_trans` (`r_wrist_r_motor`, `r_wrist_l_motor`) may be enabled; with 0.5 Nm commanded
+  the motors stay halted until a reset and again after it (device error), 0 A programmed, the other
+  31 boards untouched; a controller for `head_pan_joint` is refused ("not in commanded_joints");
+  with `min_acceptable_rt_loop_frequency:=1100` the monitor halts ("realtime loop only ran at
+  1001.7 Hz"), at 750 Hz it never did.
+- **Decision:** the part from the commands to the actuators (`finishEffortCommands`) is tested
+  without EtherCAT on the real PR2 model (`test/test_effort_chain.cpp`): wrist roll reaches both
+  wrist motors and the flex gets 0, the 10% clamp, other actuators disabled, ROS 1's velocity
+  braking above 3.6 rad/s, and a flex outside its soft limit stays at 0 (removing the zeroing makes
+  that test fail with the -8 Nm ROS 1 would apply). Stage 2 sees the first real current.
