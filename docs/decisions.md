@@ -271,3 +271,23 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   the "overlay is still sourced by hand" consequence of D13.
 - **Consequences:** a package removed from the workspace stays on the paths of open shells until
   they are reopened (colcon warns about this when building).
+
+## D16: The container environment script works on any machine
+
+- **Status:** accepted (2026-11-20)
+- **Context:** the dashboard machine pr2-ext also runs Jazzy in a distrobox next to its host setup,
+  with the workspace in `~/ros2_ws`. The D13 script removed c1's host paths by name, so pr2-ext's
+  leftovers (`~/lib/better_pybullet` in `PYTHONPATH`, plus an empty entry, i.e. the current
+  directory) got through, and the workspace path was fixed to c1's.
+- **Decision:** `scripts/distrobox_env.bash`
+  - clears the search paths that only ROS and build setups set (`PYTHONPATH`, `LD_LIBRARY_PATH`,
+    `CMAKE_PREFIX_PATH`, `AMENT_PREFIX_PATH`, `PKG_CONFIG_PATH`, `CPATH`, `LIBRARY_PATH`,
+    `CMAKE_*_PATH`, `LDFLAGS`) instead of filtering them, since in a container shell they can only
+    come from the host;
+  - filters only `PATH` (drops `/opt/ros/*`, catkin `devel` and `~/local` entries, empty entries
+    and duplicates);
+  - finds the workspace from its own location (`<ws>/src/pr2_ros2/scripts/`).
+  - Recommended use: source it at the end of `~/.bashrc` when `$CONTAINER_ID` is set, so it cleans
+    up after everything host-specific. c1 keeps its existing switch (D13).
+- **Consequences:** anything a container shell needs in those variables beyond Jazzy and the
+  workspace has to be set after the script. Supersedes the filtering described in D13.

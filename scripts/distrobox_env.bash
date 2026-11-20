@@ -1,45 +1,51 @@
-# Shell environment for the ROS 2 distrobox container (decision D13 in docs/decisions.md).
+# Shell environment for a ROS 2 distrobox container (decisions D13, D15, D16 in docs/decisions.md).
 #
-# ~/.bashrc is shared with the host (Ubuntu 20.04, ROS 1 Noetic), and distrobox copies the host
-# shell's environment into the container. Inside the container none of that is valid: ROS 1
-# workspaces, and libraries/headers built for the host in ~/local. ~/.bashrc sources this file
-# instead of the ROS 1 setup when $CONTAINER_ID is set:
+# distrobox shares $HOME with the host and copies the host shell's whole environment into the
+# container, and ~/.bashrc runs in both. Whatever the host sets up (ROS 1 workspaces, Python paths,
+# libraries built for the host's Ubuntu) is not valid in the container. Source this file from
+# ~/.bashrc in container shells, after anything host-specific has run, e.g. at the very end:
 #
-#   if [ -n "$CONTAINER_ID" ]; then
-#     [ -f ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash ] && \
-#       source ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash
-#   else
-#     source ${HOME}/scripts/env20.setup
+#   if [ -n "$CONTAINER_ID" ] && [ -f ~/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash ]; then
+#     source ~/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash
 #   fi
+#
+# ($CONTAINER_ID is set by distrobox.) Host-only lines that fail inside the container, such as
+# sourcing ROS 1, are best wrapped in `if [ -z "$CONTAINER_ID" ]; then ... fi`.
+#
+# The workspace is the one this file is checked out in: <ws>/src/pr2_ros2/scripts/.
 
-# Drop path entries that belong to the host from a colon-separated variable.
-_pr2_strip_host_entries() {
-  local var=$1 out="" entry
-  local -a entries
-  IFS=: read -ra entries <<< "${!var}"
-  for entry in "${entries[@]}"; do
-    case "$entry" in
-      "" | /opt/ros/noetic* | "$HOME"/workspace/*/devel* | "$HOME"/local | "$HOME"/local/* | \
-      "$HOME"/better_pybullet/*) ;;
-      *) out=${out:+$out:}$entry ;;
-    esac
-  done
-  if [ -n "$out" ]; then export "$var=$out"; else unset "$var"; fi
-}
-for _pr2_var in PATH LD_LIBRARY_PATH LIBRARY_PATH CPATH PKG_CONFIG_PATH PYTHONPATH \
-                CMAKE_PREFIX_PATH CMAKE_LIBRARY_PATH CMAKE_INCLUDE_PATH; do
-  _pr2_strip_host_entries "$_pr2_var"
-done
-unset _pr2_var
-unset -f _pr2_strip_host_entries
+_pr2_ws=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 
-# ROS 1 variables (ROS_DISTRO etc. would also confuse rosdep and ament), and the host's -L~/local/lib.
+# Search paths that only ROS and build setups set: in a container shell they can only come from
+# the host, so start them from scratch and let Jazzy and the workspace set them again.
+unset PYTHONPATH LD_LIBRARY_PATH LIBRARY_PATH CPATH PKG_CONFIG_PATH \
+      CMAKE_PREFIX_PATH CMAKE_LIBRARY_PATH CMAKE_INCLUDE_PATH AMENT_PREFIX_PATH COLCON_PREFIX_PATH \
+      LDFLAGS
+
+# ROS 1 variables (ROS_DISTRO etc. would also confuse rosdep and ament). ROS 2 variables such as
+# ROS_DOMAIN_ID are kept.
 unset ROS_DISTRO ROS_VERSION ROS_PYTHON_VERSION ROS_PACKAGE_PATH ROS_ROOT ROS_ETC_DIR \
-      ROS_MASTER_URI ROS_IP ROS_HOSTNAME ROSLISP_PACKAGE_DIRECTORIES ROS_ENV_LOADER LDFLAGS
+      ROS_MASTER_URI ROS_IP ROS_HOSTNAME ROSLISP_PACKAGE_DIRECTORIES ROS_ENV_LOADER
+
+# PATH also holds the system directories, so only drop the host's ROS and build entries.
+_pr2_path=""
+IFS=: read -ra _pr2_entries <<< "$PATH"
+for _pr2_entry in "${_pr2_entries[@]}"; do
+  case "$_pr2_entry" in
+    "" | /opt/ros/* | */devel | */devel/* | "$HOME"/local | "$HOME"/local/*) ;;
+    *) case ":$_pr2_path:" in
+         *":$_pr2_entry:"*) ;;                                  # drop duplicates
+         *) _pr2_path=${_pr2_path:+$_pr2_path:}$_pr2_entry ;;
+       esac ;;
+  esac
+done
+export PATH=$_pr2_path
 
 source /opt/ros/jazzy/setup.bash
 
-# The PR2 workspace overlay, once it has been built.
-if [ -f "$HOME/workspace/ros2_ws/install/setup.bash" ]; then
-  source "$HOME/workspace/ros2_ws/install/setup.bash"
+# The workspace overlay, once it has been built.
+if [ -f "$_pr2_ws/install/setup.bash" ]; then
+  source "$_pr2_ws/install/setup.bash"
 fi
+
+unset _pr2_ws _pr2_path _pr2_entries _pr2_entry

@@ -13,19 +13,18 @@ The motor chain under ros2_control lives in `pr2_ethercat_drivers/pr2_ros2_contr
 
 ROS 2 runs in a distrobox container on c1 (pr2a), next to ROS 1 on the host (decision D1).
 
-`~/.bashrc` is shared with the host, where it sets up ROS 1. Inside the container it should set
-up Jazzy instead (decision D13), so replace its `source ${HOME}/scripts/env20.setup` line with:
+`~/.bashrc` is shared with the host, and distrobox copies the host's environment into the
+container. To get a clean Jazzy environment with the workspace in container shells (decisions D13,
+D16), add this at the end of `~/.bashrc`, adjusting the path to the workspace:
 
 ```bash
-if [ -n "$CONTAINER_ID" ]; then
-  [ -f ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash ] && \
-    source ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash
-else
-  source ${HOME}/scripts/env20.setup
+if [ -n "$CONTAINER_ID" ] && [ -f ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash ]; then
+  source ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash
 fi
 ```
 
-(Already done on c1.) Then, in a new container shell:
+Host-only lines that fail in the container, such as sourcing ROS 1, are best wrapped in
+`if [ -z "$CONTAINER_ID" ]; then ... fi`. (Already done on c1.) Then, in a new container shell:
 
 ```bash
 mkdir -p ~/workspace/ros2_ws/src && cd ~/workspace/ros2_ws/src
