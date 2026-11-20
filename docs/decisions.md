@@ -330,3 +330,26 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 - **Verified:** read-only: the board (serial 1002) reports 71.4 V input, all three breakers in
   standby (17 V), runstop flags false with the e-stop pressed; the dashboard aggregator marks the
   power board state valid.
+
+## D18: Breakers on and motor reset when the e-stop is released, as in ROS 1
+
+- **Status:** accepted (2026-11-20); supersedes the "breakers are only switched through the
+  dashboard" part of D17.
+- **Context:** after the breakers were switched on, all motor boards stayed in safety lockout
+  (latched undervoltage). The one startup reset (D16) did not clear it. In ROS 1 nobody uses the
+  dashboard for this: `pr2_run_stop_auto_restart` (started by `pr2_bringup/pr2.launch`) watches
+  `power_board/state` and, when `run_stop` goes from false to true, sends `start` to breakers 0-2,
+  waits 2 s and calls `pr2_ethercat/reset_motors`. Our hardware component had no such service.
+- **Decision:**
+  - `pr2_ros2_control` offers `~/reset_motors` and `~/halt_motors` (`std_srvs/Empty`, i.e.
+    `/pr2_ethercat/...`, the names ROS 1 and the dashboard use). While read-only, a reset runs the
+    same sequence as the startup reset and halt stays set on every cycle; halt is a no-op.
+  - Port `pr2_run_stop_auto_restart` (fork `pr2_robot`, branch `ros-jazzy-main`, only this
+    package; the others have `AMENT_IGNORE`) with unchanged behaviour. The ROS 1 callback waits and
+    sleeps; the port runs that sequence in a worker thread so the executor can deliver the service
+    responses.
+  - `power_board.launch.py` starts it next to the power board. Releasing the e-stop is the request
+    to power the motors, as in ROS 1.
+- **Verified:** against fake services: nothing happens at startup, a release sends `start` to
+  breakers 0-2 with the board serial and calls `reset_motors` 2 s later; clean exit on SIGINT.
+  Hardware test pending.

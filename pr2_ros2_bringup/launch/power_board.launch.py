@@ -15,4 +15,8 @@ def generate_launch_description():
                               description='IP address of the power board'),
         Node(package='pr2_power_board', executable='power_node2', name='power_board',
              parameters=[{'address': LaunchConfiguration('address')}], respawn=True),
+        # As ROS 1 pr2.launch: when the e-stop is released, switch the breakers on and reset the
+        # motors (decision D18).
+        Node(package='pr2_run_stop_auto_restart', executable='run_stop_auto_restart',
+             name='pr2_run_stop_auto_restart'),
     ])
