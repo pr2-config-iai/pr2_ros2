@@ -30,3 +30,11 @@ repositories:
     type: git
     url: https://github.com/pr2-config-iai/pr2_mechanism.git
     version: ros-jazzy-main
+  pr2_power_drivers:
+    type: git
+    url: https://github.com/pr2-config-iai/pr2_power_drivers.git
+    version: ros-jazzy-main
+  rqt_pr2_dashboard:
+    type: git
+    url: https://github.com/pr2-config-iai/rqt_pr2_dashboard.git
+    version: ros-jazzy-main

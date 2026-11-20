@@ -4,7 +4,8 @@ Workspace-level repository for porting the IAI PR2 from ROS 1 Noetic to ROS 2 Ja
 
 - [`pr2_ros2.repos`](pr2_ros2.repos): the repositories and branches that make up the ROS 2 workspace.
 - [`docs/decisions.md`](docs/decisions.md): the decisions we make along the way and why.
-- [`pr2_ros2_bringup`](pr2_ros2_bringup): launch files for the robot (so far: the Hokuyo lasers).
+- [`pr2_ros2_bringup`](pr2_ros2_bringup): launch files and config for the robot (so far: the Hokuyo
+  lasers, diagnostics and dashboard aggregation).
 
 The motor chain under ros2_control lives in `pr2_ethercat_drivers/pr2_ros2_control`; see its README.
 
@@ -45,7 +46,9 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 | ros2_control (`pr2_ros2_control`) | read-only: `/joint_states` match ROS 1 for all 45 joints |
 | Calibration | uses the offsets ROS 1 stored on the boards; no ROS 2 routine yet |
 | Commanding motors, controllers | next |
+| Dashboard (`rqt_pr2_dashboard`, aggregators) | ported; motors and diagnostics live, breakers/runstops/battery wait for their drivers |
 | Hokuyos | launch file written; they are on c2, which is not set up yet |
+| Power board, batteries | service definitions only (for the dashboard) |
 | IMU, cameras, F/T sensors, motorconf | not started |
 
 ## Known issues on the ROS 1 side

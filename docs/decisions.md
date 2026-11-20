@@ -235,3 +235,30 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
     `LD_LIBRARY_PATH` risk noted in D11.
   - The workspace overlay (`install/setup.bash`) is still sourced by hand.
   - Shells that were already open in the container keep the old environment until reopened.
+
+## D14: Dashboard and diagnostics keep the ROS 1 interfaces
+
+- **Status:** accepted (2026-11-20)
+- **Context:** `rqt_pr2_dashboard` shows motors, breakers, runstops, battery, diagnostics and the
+  log. In ROS 1 it is fed by `pr2_dashboard_aggregator` (`/dashboard_agg`), `diag_agg`
+  (diagnostic_aggregator with `pr2_bringup/config/pr2_analyzers.yaml`), `power_node2` (power board)
+  and `ocean_server`/`power_monitor` (batteries, on c2).
+- **Decision:**
+  - Port `rqt_pr2_dashboard` (fork in pr2-config-iai) and `pr2_dashboard_aggregator` with the same
+    topic and service names as ROS 1. `ethercat_hardware` publishes `~/motors_halted`, which is
+    `/pr2_ethercat/motors_halted` as in ROS 1, because ros2_control names the hardware component's
+    node after the `<ros2_control>` block (`pr2_ethercat`). Motor reset and halt will be
+    `/pr2_ethercat/reset_motors` and `halt_motors`, the dashboard's defaults.
+  - `pr2_ros2_bringup/launch/diagnostics.launch.py` starts `diag_agg` and the dashboard aggregator,
+    as ROS 1 `pr2.launch` did.
+  - The analyzer config only contains groups whose diagnostics ROS 2 publishes (Motors, plus the
+    ros2_control controller manager under "Realtime Controllers"). Every expected item nobody
+    publishes would hold the dashboard's diagnostics icon at error. The ROS 1 groups come back as
+    their drivers are ported.
+  - Jazzy's `GenericAnalyzer` only matches items through `startswith`/`contains`/`regex`; `expected`
+    and `name` only add "Missing" placeholders. Every expected item must also match one of those.
+  - `pr2_power_board` is ported as service definitions only for now, so the dashboard's breaker
+    buttons have their service type. The power board driver comes later.
+- **Consequences:** until the power board and battery drivers are ported, breakers, runstops and
+  battery show as stale. The reset/halt buttons report that the services are missing until the
+  commanding step (D10).
