@@ -1,0 +1,32 @@
+# The ROS 2 (Jazzy) workspace for the IAI PR2.
+#   mkdir -p ~/workspace/ros2_ws/src && cd ~/workspace/ros2_ws/src
+#   vcs import < pr2_ros2/pr2_ros2.repos
+repositories:
+  pr2_ros2:
+    type: git
+    url: https://github.com/pr2-config-iai/pr2_ros2.git
+    version: ros-jazzy-main
+  eml:
+    type: git
+    url: https://github.com/pr2-config-iai/eml-release.git
+    version: ros-jazzy-main
+  iai_pr2:
+    type: git
+    url: https://github.com/code-iai/iai_pr2.git
+    version: ros-jazzy-main
+  pr2_common:
+    type: git
+    url: https://github.com/pr2-config-iai/pr2_common.git
+    version: ros-jazzy-main
+  pr2_controllers:
+    type: git
+    url: https://github.com/pr2-config-iai/pr2_controllers.git
+    version: ros-jazzy-main
+  pr2_ethercat_drivers:
+    type: git
+    url: https://github.com/pr2-config-iai/pr2_ethercat_drivers.git
+    version: ros-jazzy-main
+  pr2_mechanism:
+    type: git
+    url: https://github.com/pr2-config-iai/pr2_mechanism.git
+    version: ros-jazzy-main
