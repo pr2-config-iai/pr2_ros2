@@ -353,3 +353,26 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 - **Verified:** against fake services: nothing happens at startup, a release sends `start` to
   breakers 0-2 with the board serial and calls `reset_motors` 2 s later; clean exit on SIGINT.
   Hardware test pending.
+
+## D19: Realtime loop diagnostics as in ROS 1; the timing matches ROS 1
+
+- **Status:** accepted (2026-11-20)
+- **Context:** the controller manager reported "bad periodicity" (1087-1128 Hz early in a run,
+  1002 Hz later, huge deviation) and logged overruns of about 1 ms read time.
+- **Findings:**
+  - The EtherCAT round trip of this robot is about 650 us on average and up to about 930 us per
+    second in ROS 1 as well (baseline bag: 630-645 us average, 1-s maximum 931 us, 10 overruns,
+    "Last Control Loop Overrun Cause: ec: 1036.92us"). Occasional overruns of about 1 ms are the
+    same as in ROS 1.
+  - The periodicity error came from our first cycle: its measured period was the ~1 us since the
+    loop started, and the controller manager keeps that statistic for the whole run.
+  - Single long round trips (5.6 ms) coincided with a C++ build on c1.
+- **Decision:**
+  - `pr2_control_node` gives the first cycle the nominal period and publishes ROS 1's "Realtime
+    Control Loop" status (same keys); the analyzer puts it under "Realtime Controllers".
+  - ROS 1 halts the motors while the loop frequency over 600 ms is below 750 Hz and keeps that
+    until a motor reset. That belongs in the hardware component (it halts and sees resets) and is
+    added with commanding; until then it is only reported.
+  - Avoid heavy builds on c1 while motors are commanded.
+- **Verified:** periodicity 1000.000 Hz (deviation 0.53 Hz), average loop jitter 4.25 us
+  (maximum 13 us; ROS 1: 4.63 us, 66 us), no overruns in the first minute.

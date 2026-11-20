@@ -53,7 +53,7 @@ diag_agg:
     controllers:
       type: diagnostic_aggregator/GenericAnalyzer
       path: Realtime Controllers
-      startswith: ['controller_manager']
+      startswith: ['controller_manager', 'Realtime Control Loop']
     # ROS 1 also expected IBPS 0-3 and Smart Battery 0.0-3.3 here (ocean_battery_driver, not ported).
     power:
       type: diagnostic_aggregator/GenericAnalyzer
