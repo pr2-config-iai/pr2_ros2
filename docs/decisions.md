@@ -210,3 +210,28 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   accident and breaks again with any other host process (e.g. a stock `ros2_control_node`).
 - **Consequences:** anything that uses a device or transmission class directly (the unit tests)
   links the plugin library.
+
+## D13: The container's shell environment comes from `scripts/distrobox_env.bash`
+
+- **Status:** accepted (2026-11-20)
+- **Context:** `~/.bashrc` is shared between the host and the container. Via `~/scripts/env20.setup`
+  it sources the ROS 1 workspaces, and distrobox also copies the host shell's whole environment into
+  the container. So the container had ROS 1 entries in `LD_LIBRARY_PATH`, `CMAKE_PREFIX_PATH`,
+  `PYTHONPATH` etc. (some ROS 1 libraries have the same names as ours, e.g.
+  `libethercat_hardware.so`), plus a Qt 5.5 built for the host in `~/local` via `LD_LIBRARY_PATH`,
+  `CPATH` and `LDFLAGS=-L~/local/lib`. D1 worked around part of it with `unset ROS_DISTRO
+  ROS_PACKAGE_PATH`; D11 noted the leftover `LD_LIBRARY_PATH` entries as a risk.
+- **Decision:** `~/.bashrc` sources `env20.setup` only on the host. With `$CONTAINER_ID` set (the
+  variable distrobox defines) it sources [`scripts/distrobox_env.bash`](../scripts/distrobox_env.bash)
+  instead, which removes the host's entries (`/opt/ros/noetic`, `~/workspace/*/devel`, `~/local`)
+  from the path variables, unsets the ROS 1 variables and `LDFLAGS`, and sources Jazzy. The script
+  is versioned here; `~/.bashrc` only holds the switch (snippet at the top of the script).
+- **Alternatives:** have `pr2-rt` strip the ROS 1 entries for the realtime process only (fixes one
+  symptom; builds and every other ROS 2 process keep the polluted environment).
+- **Verified:** a new shell inside the container has no ROS 1 or `~/local` entries left; full clean
+  rebuild and all tests pass in it. The host branch of `~/.bashrc` is unchanged.
+- **Consequences:**
+  - Supersedes the `unset ROS_DISTRO ROS_PACKAGE_PATH` step from D1 and resolves the
+    `LD_LIBRARY_PATH` risk noted in D11.
+  - The workspace overlay (`install/setup.bash`) is still sourced by hand.
+  - Shells that were already open in the container keep the old environment until reopened.

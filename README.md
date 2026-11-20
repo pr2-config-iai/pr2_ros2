@@ -12,13 +12,25 @@ The motor chain under ros2_control lives in `pr2_ethercat_drivers/pr2_ros2_contr
 
 ROS 2 runs in a distrobox container on c1 (pr2a), next to ROS 1 on the host (decision D1).
 
+`~/.bashrc` is shared with the host, where it sets up ROS 1. Inside the container it should set
+up Jazzy instead (decision D13), so replace its `source ${HOME}/scripts/env20.setup` line with:
+
+```bash
+if [ -n "$CONTAINER_ID" ]; then
+  [ -f ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash ] && \
+    source ~/workspace/ros2_ws/src/pr2_ros2/scripts/distrobox_env.bash
+else
+  source ${HOME}/scripts/env20.setup
+fi
+```
+
+(Already done on c1.) Then, in a new container shell:
+
 ```bash
 mkdir -p ~/workspace/ros2_ws/src && cd ~/workspace/ros2_ws/src
 git clone -b ros-jazzy-main https://github.com/pr2-config-iai/pr2_ros2.git
 vcs import < pr2_ros2/pr2_ros2.repos
 cd ~/workspace/ros2_ws
-unset ROS_DISTRO ROS_PACKAGE_PATH   # ~/.bashrc sources ROS 1, also inside the container
-source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -y
 colcon build
 src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: realtime launcher (D11), needs sudo
