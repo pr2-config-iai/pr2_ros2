@@ -376,3 +376,36 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   - Avoid heavy builds on c1 while motors are commanded.
 - **Verified:** periodicity 1000.000 Hz (deviation 0.53 Hz), average loop jitter 4.25 us
   (maximum 13 us; ROS 1: 4.63 us, 66 us), no overruns in the first minute.
+
+## D20: Commanding the motors, step by step
+
+- **Status:** accepted (2026-11-20)
+- **Context:** ROS 1 `pr2_controller_manager::update` zeroes the joint efforts, runs the
+  controllers, clamps each effort with `JointState::enforceLimits` (URDF effort and velocity limits,
+  plus the position soft limits on calibrated joints) and propagates the efforts through the
+  transmissions, which enables the actuators. `pr2_ethercat` halts the motors on request, on device
+  errors and while the loop runs below 750 Hz, until a motor reset. ROS 1's calibration controller
+  marks a joint calibrated without moving it when its board holds a saved zero offset.
+- **Decision:**
+  - Same chain in the hardware component: effort command interfaces; `write()` sets the joint
+    efforts, runs `enforceSafety()` and the transmissions; `read()` sends them with the next
+    EtherCAT exchange (one cycle, as ROS 1).
+  - Halting as ROS 1, in the component: `~/halt_motors` latches until `~/reset_motors`; the loop
+    frequency over 600 ms below `min_acceptable_rt_loop_frequency` (750 Hz) halts until a reset.
+  - Calibration as ROS 1: saved board offset means calibrated. Joints with a `<calibration>`
+    element that are not calibrated get no effort (ROS 2 calibration routine later).
+  - Gates, read-only by default: `commanding_enabled` (false), `commanded_joints` (allowlist) and
+    `max_effort_fraction` (extra clamp on the URDF effort limit). Joints not on the list get exactly
+    zero effort after `enforceSafety()`, also when they share actuators with a listed joint (the
+    wrist transmission drives roll and flex with the same two motors); actuators of unlisted
+    transmissions stay disabled and are still checked never to report enabled.
+  - Stages: (1) e-stop pressed: command path, halt, reset and the low-frequency halt verified
+    without motor power; (2) e-stop released, first motion on `r_wrist_roll_joint` (continuous,
+    least likely to hit anything; 10 Nm, 3.6 rad/s, `k_velocity` 2) with small efforts through
+    `effort_controllers/JointGroupEffortController`; (3) joint velocity control, the goal: Jazzy's
+    `pid_controller` (velocity reference, effort output) with the ROS 1
+    `pr2_joint_velocity_controllers.yaml` gains (wrist roll p 4, i 25, i_clamp 100), checking that
+    its integral clamp means the same as ROS 1's; port `JointVelocityController` if it does not.
+    ROS 1 restarts running controllers when the motors come back from a halt; we need the same
+    before stage 3.
+  - Base, casters and grippers later (they need ROS 1's own controllers).
