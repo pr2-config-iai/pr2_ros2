@@ -47,7 +47,7 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 | Commanding motors, controllers | next |
 | Dashboard (`rqt_pr2_dashboard`, aggregators) | ported; motors and diagnostics live, breakers/runstops/battery wait for their drivers |
 | Hokuyos | launch file written; they are on c2, which is not set up yet |
-| Power board | ported (`power_board.launch.py`); state, diagnostics and the dashboard breaker buttons verified; auto restart on e-stop release (`pr2_run_stop_auto_restart`) ported, hardware test pending |
+| Power board | ported (`power_board.launch.py`); state, diagnostics and the dashboard breaker buttons verified; releasing the e-stop switches the breakers on and resets the motors (`pr2_run_stop_auto_restart`), verified: all motor boards OK, motors halted |
 | Batteries (`ocean_battery_driver`, on c2) | not started |
 | IMU, cameras, F/T sensors, motorconf | not started |
 
