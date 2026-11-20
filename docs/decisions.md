@@ -291,3 +291,21 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
     up after everything host-specific. c1 keeps its existing switch (D13).
 - **Consequences:** anything a container shell needs in those variables beyond Jazzy and the
   workspace has to be set after the script. Supersedes the filtering described in D13.
+
+## D16: One motor reset at startup, as in ROS 1, while read-only
+
+- **Status:** accepted (2026-11-20)
+- **Context:** every motor board reports a timestamp jump for its first packet (the previous
+  timestamp starts at 0), and the boards latch safety faults such as undervoltage from a pressed
+  e-stop. ROS 1 `pr2_ethercat` clears both with one motor reset in its first cycle
+  (`ec.update(true, false)`). Without it, ROS 2 showed "Timestamp jumped" on every board forever.
+- **Decision:** `Pr2EthercatSystem` passes `reset=true` with the first EtherCAT exchange after
+  `tryInit()`. Two cycles later every board gets `MODE_SAFETY_RESET` and its error flags are
+  cleared. Unlike ROS 1, `halt` stays set on every cycle and the commands keep enable off, so no
+  board leaves `MODE_OFF`. This narrows D10 ("nothing is sent") to "nothing that enables a motor".
+- **Alternatives:** clearing only the software flags (differs from ROS 1, needs changes to
+  `ethercat_hardware`); waiting for the commanding step's reset service.
+- **Verified:** read-only with the e-stop pressed, the boards report "Safety Lockout: UNDERVOLTAGE"
+  only, as in the ROS 1 recording.
+- **Consequences:** halting on every cycle counts as a halt request each time ("Halt motors service
+  count" grows by 1000/s; ROS 1 shows 0). To be cleaned up when halt/reset become services.
