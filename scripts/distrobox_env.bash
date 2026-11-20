@@ -38,3 +38,8 @@ unset ROS_DISTRO ROS_VERSION ROS_PYTHON_VERSION ROS_PACKAGE_PATH ROS_ROOT ROS_ET
       ROS_MASTER_URI ROS_IP ROS_HOSTNAME ROSLISP_PACKAGE_DIRECTORIES ROS_ENV_LOADER LDFLAGS
 
 source /opt/ros/jazzy/setup.bash
+
+# The PR2 workspace overlay, once it has been built.
+if [ -f "$HOME/workspace/ros2_ws/install/setup.bash" ]; then
+  source "$HOME/workspace/ros2_ws/install/setup.bash"
+fi

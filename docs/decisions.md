@@ -262,3 +262,12 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 - **Consequences:** until the power board and battery drivers are ported, breakers, runstops and
   battery show as stale. The reset/halt buttons report that the services are missing until the
   commanding step (D10).
+
+## D15: Container shells also source the workspace overlay
+
+- **Status:** accepted (2026-11-20)
+- **Decision:** `scripts/distrobox_env.bash` (D13) sources `~/workspace/ros2_ws/install/setup.bash`
+  after Jazzy, if it exists, so every container shell can run the PR2 packages directly. Supersedes
+  the "overlay is still sourced by hand" consequence of D13.
+- **Consequences:** a package removed from the workspace stays on the paths of open shells until
+  they are reopened (colcon warns about this when building).
