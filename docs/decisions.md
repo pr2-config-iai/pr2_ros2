@@ -562,3 +562,58 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   towards its limits between tests (upper arm roll up, wrist flex to a limit). Beyond a soft limit,
   `enforceSafety` pushes back with the whole effort limit, as ROS 1 (the wrist flex at +0.078 got
   -1 Nm the whole time without moving).
+
+## D28: Arm velocity control with WG's trajectory gains, at 30 % effort
+
+- **Status:** accepted (2026-11-24); continues D27
+- **Context:** with WG's calibration gains (D27) every arm joint reached only a third to nine tenths
+  of its velocity reference: friction (about 1 Nm), the counterbalance springs and the cables load the
+  joints differently per direction and pose, and a velocity PI with i 0.2 to 6 builds up the torque
+  for that far too slowly; after a stop its integral stays and must unwind at the next reversal.
+- **Decision:**
+  - A velocity PI is a position PD on the integrated reference: velocity p = position d, velocity
+    i = position p, and with the one-sample velocity the integral is exactly the distance moved. So
+    `r_arm_velocity_controller` keeps `pid_controller` and uses WG's arm trajectory gains
+    (`pr2_arm_controllers.yaml`, also IAI's `pr2_whole_body_controller.yaml`) that way. With
+    conditional integration the "setpoint" is dragged along while the output is at the clamp, which
+    is the anti-windup we want. No custom controller for now.
+  - Gains (velocity p / i): elbow flex 4 / 700, forearm roll 6 / 300, upper arm roll 6 / 1000, wrist
+    flex and roll 4 / 300 (all WG's); shoulder lift 25 / 400 and shoulder pan 18 / 800 (a third of
+    WG's i; the lift's p raised for damping). `save_i_term: false` (D26).
+  - Tests at `max_effort_fraction:=0.3` (9 Nm arm, 3 Nm wrist): at 0.1 the shoulders saturated from
+    1 Hz on and the wrist flex could not always lift the gripper. The controller's output and
+    integral clamps must equal the hardware limit: conditional integration only stops at its own
+    clamp, so with a larger clamp the integral would wind up unnoticed. The config is written for 0.3.
+  - `velocity_window` stays 1 for control. With 3 samples (about 1 ms more delay) the upper arm roll
+    (i 1000, little inertia, the highest natural frequency) oscillated while held and the watchdog
+    halted it; with 1 the same test was calm.
+  - `velocity_step_test.py --sine`: velocity sines with fade in and out, amplitude ratio and lag per
+    frequency. Giskard's braking windows of 0.1 to 0.5 s at up to 1 rad/s mean 4 to 20 rad/s^2, i.e.
+    content up to about 1 to 5 Hz.
+- **Verified on the robot** (±0.2 rad/s; steps of 1.5 s, sines of 0.25 to 2 Hz):
+  - steps: every joint within 1 to 5 % of the distance, at the reference from the second 0.25 s on,
+    both directions alike; stops within a few mrad and 0.02 to 0.4 s; held joints still within 1 mrad;
+    no creep against the springs (upper arm roll before: 0.02 rad).
+  - sines at 30 %: wrist flex and roll, forearm roll: amplitude ratio 0.97 to 1.00 and 2 to 16 deg
+    lag up to 2 Hz, far below their clamps. Shoulder lift (p 25): 0.99 to 1.04 up to 1 Hz, 1.19 at
+    2 Hz (1.33 with p 15). Shoulder pan (p 18): 1.00 to 1.02 up to 0.5 Hz, 1.15 at 1 Hz, about 1.3
+    at 1.5 Hz, and at 2 Hz 9 Nm (the clamp) for a fifth of the time with 61 deg lag; p 30 hardly
+    changed that and doubled the noise, so it stays at 18.
+- **Known limits:**
+  - The shoulders resonate between 1 and 2 Hz. For the lift more damping (p) helps partly; part of
+    the overshoot is inherent to the structure (the reference also drives the p term). For the pan p
+    hardly helps, which suggests compliance between the motor (where the encoder is) and the arm;
+    not proven. Until then Giskard should keep the pan's accelerations moderate (braking windows of
+    about 0.5 s and more).
+  - Torque ripple from the velocity quantization: while a joint moves, its reading jumps by one count
+    per cycle in about a third of the samples, which gives p × step per jump (shoulder lift at p 25:
+    2.1 Nm, 0.7 Nm std; audible). None while a joint is still.
+  - Dropped packets: about one every 4 to 5 min whether the arm moves or not (21 of 22 outside the
+    tests; 17 in 91 min on the NIC), each a frame with a CRC error and a 5 ms stall; the NIC counted
+    the same rate under ROS 1 since boot. A physical layer issue (cable, connector or noise), not a
+    software one. The diagnostics' "Lost Links" (uninitialised, also upstream) and "Halt motors
+    service count" (counted cycles) are fixed.
+- **Next:** record positions and efforts at 1 kHz in the component; with that, a velocity observer
+  that predicts from the commanded torque (no window delay) and acceleration feedforward, in a
+  custom controller if needed (with a command timeout for Giskard); a sine run on the pan with a
+  different i to tell a controller resonance from a mechanical one; then the left arm and the head.
