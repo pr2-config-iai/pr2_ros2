@@ -7,6 +7,22 @@ Workspace-level repository for porting the IAI PR2 from ROS 1 Noetic to ROS 2 Ja
 - [`pr2_ros2_bringup`](pr2_ros2_bringup): launch files and config for the robot (so far: the Hokuyo
   lasers, the power board, diagnostics and dashboard aggregation).
 
+## Running
+
+On c1, in a container shell, one launch file starts everything that runs there: the power board
+(with the e-stop auto restart), the diagnostic and dashboard aggregators, and the motor chain.
+The motors stay halted (read-only) unless commanding is enabled (decision D20):
+
+```bash
+ros2 launch pr2_ros2_bringup pr2.launch.py
+ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=true \
+    commanded_joints:=r_wrist_roll_joint,r_wrist_flex_joint   # wrist only, 10% effort limit
+ros2 launch pr2_ros2_bringup pr2.launch.py -s                 # all arguments
+```
+
+The Hokuyos are on c2: `ros2 launch pr2_ros2_bringup hokuyos.launch.py` there. The dashboard runs
+anywhere: `ros2 run rqt_pr2_dashboard rqt_pr2_dashboard`.
+
 The motor chain under ros2_control lives in `pr2_ethercat_drivers/pr2_ros2_control`; see its README.
 
 ## Setup
@@ -42,9 +58,9 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 |---|---|
 | Messages (`pr2_msgs`, `pr2_controllers_msgs`) | ported |
 | EtherCAT (`eml`, `ethercat_hardware`) | ported; reads the robot exactly like ROS 1 |
-| ros2_control (`pr2_ros2_control`) | read-only: `/joint_states` match ROS 1 for all 45 joints |
+| ros2_control (`pr2_ros2_control`) | `/joint_states` match ROS 1 for all 45 joints; velocity over 10 encoder samples (D22) |
 | Calibration | uses the offsets ROS 1 stored on the boards; no ROS 2 routine yet |
-| Commanding motors, controllers | next |
+| Commanding motors, controllers | gated effort commanding (D20); right wrist under velocity control verified with provisional gains (D23); controller reset on halt/release still missing |
 | Dashboard (`rqt_pr2_dashboard`, aggregators) | ported; motors and diagnostics live, breakers/runstops/battery wait for their drivers |
 | Hokuyos | launch file written; they are on c2, which is not set up yet |
 | Power board | ported (`power_board.launch.py`); state, diagnostics and the dashboard breaker buttons verified; releasing the e-stop switches the breakers on and resets the motors (`pr2_run_stop_auto_restart`), verified: all motor boards OK, motors halted |
