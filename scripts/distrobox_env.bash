@@ -22,13 +22,14 @@ unset PYTHONPATH LD_LIBRARY_PATH LIBRARY_PATH CPATH PKG_CONFIG_PATH \
       CMAKE_PREFIX_PATH CMAKE_LIBRARY_PATH CMAKE_INCLUDE_PATH AMENT_PREFIX_PATH COLCON_PREFIX_PATH \
       LDFLAGS
 
-# ROS 1 variables (ROS_DISTRO etc. would also confuse rosdep and ament). ROS 2 variables such as
-# ROS_DOMAIN_ID are kept.
+# ROS 1 variables (ROS_DISTRO etc. would also confuse rosdep and ament).
 unset ROS_DISTRO ROS_VERSION ROS_PYTHON_VERSION ROS_PACKAGE_PATH ROS_ROOT ROS_ETC_DIR \
       ROS_MASTER_URI ROS_IP ROS_HOSTNAME ROSLISP_PACKAGE_DIRECTORIES ROS_ENV_LOADER
 
-# ROS 2 discovery only on this machine (decision D24).
-export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+# ROS 2 discovery on the local network, in the robot's own domain (decision D25). Other computers
+# that should see the robot need ROS_DOMAIN_ID=1 too.
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+export ROS_DOMAIN_ID=1
 
 # PATH also holds the system directories, so only drop the host's ROS and build entries.
 _pr2_path=""

@@ -483,3 +483,14 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   topics until they are connected some other way (for example `ROS_STATIC_PEERS`, or a different
   range). Shells started before the change, and the `ros2` daemon (`ros2 daemon stop`), keep the old
   setting.
+
+## D25: ROS 2 discovery on the subnet, in domain 1
+
+- **Status:** accepted (2026-11-24); supersedes D24
+- **Context:** with `LOCALHOST` (D24), a dashboard on another computer no longer sees the robot.
+- **Decision:** `scripts/distrobox_env.bash` exports `ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET` (the
+  default, set explicitly) and `ROS_DOMAIN_ID=1`. Every machine using the script (c1, c2, pr2-ext)
+  shares one graph again. Domain 1 keeps it apart from the other ROS 2 machines on the network,
+  which use the default domain 0.
+- **Consequences:** another computer (e.g. for the dashboard) needs `ROS_DOMAIN_ID=1`. Shells started
+  before the change, and the `ros2` daemon (`ros2 daemon stop`), keep the old setting.
