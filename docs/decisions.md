@@ -494,3 +494,34 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   which use the default domain 0.
 - **Consequences:** another computer (e.g. for the dashboard) needs `ROS_DOMAIN_ID=1`. Shells started
   before the change, and the `ros2` daemon (`ros2 daemon stop`), keep the old setting.
+
+## D26: Controllers are restarted before halted motors are released
+
+- **Status:** accepted (2026-11-24); settles the first open point of D23
+- **Context:** the wrist velocity controller kept integrating while the motors were halted (the
+  wrist moved by hand left +0.47 Nm on the flex at release). ROS 1 `pr2_controller_manager::update()`
+  restarted every running controller in the realtime loop when the motors came back from a halt
+  (`!isHalted() && motors_previously_halted_`), and `JointVelocityController::starting()` set the
+  command to 0 and reset the PID. ros2_control's controller manager has no such hook.
+- **Decision:**
+  - With commanding enabled, a reset while the commanded transmissions' actuators are halted does
+    not reach the boards at once. The hardware component asks `pr2_control_node` through
+    `MotorReleaseGate` (its own small library, so the plugin and the node share one instance).
+  - The node restarts the active controllers that claim command interfaces with one
+    `switch_controller()` (the same names in the deactivate and activate lists; the controller
+    manager does both in one realtime cycle), then the component resets the motors. If the restart
+    fails, they stay halted. Broadcasters are not restarted, so `/joint_states` keeps going.
+  - "Halted" is ROS 1's definition (board off or in error) but only for the actuators that may be
+    enabled; with only the wrist commanded, ROS 1's check over all actuators would never clear.
+  - Jazzy's `pid_controller` keeps the integral across a restart by default (`save_i_term: true`); the
+    wrist controller sets it to false. Its restart starts from the current velocity and drops the old
+    reference, as ROS 1's command reset to 0.
+- **Verified on the robot:** the wrist was moved by hand with the e-stop pressed; the controller's
+  output grew to roll +0.78 Nm, flex up to the 1 Nm clamp. On the e-stop release the output went to
+  0 one sample before the motors were enabled; the measured efforts stayed at about 0 and the wrist
+  did not move. The roll sequence afterwards worked (+0.80 and -0.71 rad at 0.29 rad/s); starting
+  from a zero integral, the flex sagged 0.08 rad while its integral built up against the gripper's
+  weight (ROS 1 restarted the same way).
+- **Also seen:** with the boards off, the joint efforts stay at the last value measured while they
+  were enabled (-0.48/+0.50 Nm, then -1.0 Nm, both matching the last enabled moments), which is the
+  "effort while off" point of D23.
