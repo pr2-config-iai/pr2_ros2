@@ -525,3 +525,40 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 - **Also seen:** with the boards off, the joint efforts stay at the last value measured while they
   were enabled (-0.48/+0.50 Nm, then -1.0 Nm, both matching the last enabled moments), which is the
   "effort while off" point of D23.
+
+## D27: Right arm velocity control; velocity over one sample again by default
+
+- **Status:** accepted (2026-11-24); supersedes the default of D22 (the window stays as an option)
+- **Context:** after the wrist (D23), velocity control for the whole right arm, one joint at a time.
+  The first elbow test with D22's 10-sample velocity oscillated within 0.3 s.
+- **Decision:**
+  - `velocity_window` defaults to 1 again: ROS 1's velocity, one encoder count per cycle (0.04 to
+    0.16 rad/s steps). With 10 samples the elbow's velocity loop (p 6, WG's calibration gain)
+    oscillated at the sample rate, the effort swinging to the 3 Nm clamp and the velocity to
+    ±0.77 rad/s, until the watchdog halted it. The same test with 1 sample was stable (efforts 0 to
+    1.2 Nm). The window's delay (about N/2 ms) is the cause, not the gain; the quantization is noise
+    far above what the arm can follow. `velocity_window:=N` stays for plots; for control, test it.
+  - `r_arm_velocity_controller` (`pid_controller`, all 7 right arm joints, not started by the launch):
+    arm joints with WG's calibration velocity gains (the PIDs that ran on every PR2), the wrist as D23;
+    outputs clamped to the effort limit (3 Nm arm, 1 Nm wrist at `max_effort_fraction` 0.1), integrals
+    to the calibration clamp, `conditional_integration`, `save_i_term: false` (D26). Provisional.
+  - `tools/velocity_step_test.py` (installed): holds every joint of a velocity controller at 0, moves
+    one (hold, +v, hold, -v, hold), then halts the motors. It halts at once if the moved joint is too
+    fast or leaves start ±0.5 rad or its soft limits (minus 0.1), if another controlled joint moves
+    more than 0.15 rad or 0.3 rad/s, if anything else moves, or if `/joint_states` stops.
+- **Verified on the robot** (±0.2 rad/s for 1.5 s, forearm roll ±0.3 for 2 s; reached velocity in
+  the easy / hard direction, effort):
+  - forearm roll 0.26 / 0.18 rad/s, 0.1 to 0.5 Nm;
+  - elbow flex 0.08 (bend) / 0.04 (straighten), 0.6 to 0.9 Nm;
+  - upper arm roll 0.18 (+) / 0.08 (-), 0.25 to 0.7 Nm; it crept 0.02 rad while held afterwards;
+  - shoulder lift 0.078 (down) / 0.072 (up), about 1.1 Nm both ways, the same with the arm
+    stretched out (elbow -0.22): the counterbalance compensates the lever, if anything slightly over;
+  - shoulder pan 0.15 (forward) / 0.07 (back out), 0.5 / 1.0 Nm; it coasted 0.04 rad after stopping.
+  - Held joints drifted at most 0.033 rad (upper arm roll, the joint most loaded by the springs).
+    Nothing oscillated. The 10 s hold of the whole arm: drift at most 0.0002 rad.
+- **Open:** the calibration gains are P-dominated (i 0 to 1) and reach only a third to nine tenths of
+  the reference against friction and the springs, which depend on direction and pose. A velocity
+  controller needs a real integral; to be tuned per joint. Unpowered, the springs move the arm
+  towards its limits between tests (upper arm roll up, wrist flex to a limit). Beyond a soft limit,
+  `enforceSafety` pushes back with the whole effort limit, as ROS 1 (the wrist flex at +0.078 got
+  -1 Nm the whole time without moving).

@@ -58,7 +58,7 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 |---|---|
 | Messages (`pr2_msgs`, `pr2_controllers_msgs`) | ported |
 | EtherCAT (`eml`, `ethercat_hardware`) | ported; reads the robot exactly like ROS 1 |
-| ros2_control (`pr2_ros2_control`) | `/joint_states` match ROS 1 for all 45 joints; velocity over 10 encoder samples (D22) |
+| ros2_control (`pr2_ros2_control`) | `/joint_states` match ROS 1 for all 45 joints; velocity as ROS 1 by default, over N samples optional (D22, D27); right arm velocity control tested (D27) |
 | Calibration | uses the offsets ROS 1 stored on the boards; no ROS 2 routine yet |
 | Commanding motors, controllers | gated effort commanding (D20); right wrist under velocity control verified with provisional gains (D23); controller reset on halt/release still missing |
 | Dashboard (`rqt_pr2_dashboard`, aggregators) | ported; motors and diagnostics live, breakers/runstops/battery wait for their drivers |
