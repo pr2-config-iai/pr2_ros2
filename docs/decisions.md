@@ -472,3 +472,14 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   A joint commanded outside its soft limit gets ROS 1's push back at the effort limit (seen at flex
   +0.08 rad: -1 Nm). The joint effort read while the boards are off does not match their measured
   currents; to check.
+
+## D24: ROS 2 discovery limited to the local machine
+
+- **Status:** accepted (2026-11-24)
+- **Decision:** `scripts/distrobox_env.bash` exports `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST`, so
+  ROS 2 nodes in container shells only discover nodes on the same machine.
+- **Consequences:** the script is used on every machine (D16), so c1, c2 and pr2-ext each form their
+  own ROS 2 graph: nodes on c2 (the Hokuyos) or a dashboard on another computer do not see c1's
+  topics until they are connected some other way (for example `ROS_STATIC_PEERS`, or a different
+  range). Shells started before the change, and the `ros2` daemon (`ros2 daemon stop`), keep the old
+  setting.

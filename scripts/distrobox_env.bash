@@ -27,6 +27,9 @@ unset PYTHONPATH LD_LIBRARY_PATH LIBRARY_PATH CPATH PKG_CONFIG_PATH \
 unset ROS_DISTRO ROS_VERSION ROS_PYTHON_VERSION ROS_PACKAGE_PATH ROS_ROOT ROS_ETC_DIR \
       ROS_MASTER_URI ROS_IP ROS_HOSTNAME ROSLISP_PACKAGE_DIRECTORIES ROS_ENV_LOADER
 
+# ROS 2 discovery only on this machine (decision D24).
+export ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST
+
 # PATH also holds the system directories, so only drop the host's ROS and build entries.
 _pr2_path=""
 IFS=: read -ra _pr2_entries <<< "$PATH"
