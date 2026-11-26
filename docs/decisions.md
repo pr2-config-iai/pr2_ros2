@@ -688,3 +688,51 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   pan's acceleration limit has to come from its effort limit, not from the braking window alone.
 - **Note:** the impedance fit and the model were scratch scripts on the CSVs from
   `velocity_step_test.py --csv`; not yet in the repository.
+
+## D31: Torso and head under velocity control at 60 % effort
+
+- **Status:** accepted (2026-11-26)
+- **Context:** after the arms (D28, D29) the torso and the head. Same approach: WG's trajectory gains
+  in velocity form (velocity p = position d, velocity i = position p), one group at a time, only
+  that group in `commanded_joints`, `velocity_step_test.py` with its watchdog.
+- **Decision:**
+  - `torso_velocity_controller`: p 1e6, i 1e7 (WG `pr2_torso_controller.yaml`: p 1e7, d 1e6; N and
+    m/s), clamps ±6000 N. `head_velocity_controller`: pan p 2, i 25, clamps ±0.79 Nm; tilt p 3,
+    i 100, clamps ±10.8 Nm (WG `pr2_head_controller.yaml`: pan p 25 d 2, tilt p 100 d 3; their small
+    position integrals, an integral of an integral here, are left out). `save_i_term: false` (D26).
+    Not started by the launch.
+  - Both need `max_effort_fraction:=0.6`, so each runs in a launch of its own (the fraction is
+    global): at 0.3 the torso could not lift itself (1 mm in 1.5 s at the 3000 N clamp) and the head
+    tilt could not lift the head out of its down stop. The head pan's clamp stays at 0.3 of its
+    limit: a clamp below the hardware limit cannot wind up.
+  - For the head, `velocity_step_test.py --keep-running` (new): only a watchdog trip halts. A halt,
+    and the restart that clears the integral on the next release (D26), drops the head onto a stop.
+- **Verified on the robot:**
+  - Torso (±10 mm/s, 15 mm steps): about 2600 N of friction both ways plus about 1200 N of weight
+    against going up; up at 10 mm/s takes about 3800 N, down about −1400 N. It holds itself with the
+    motor off. At i 3.3e6 (a third) 87 to 93 % of the steps and sines 0.95 / 0.88 / 0.82 at
+    0.25 / 0.5 / 1 Hz; at i 1e7 93 % both ways, at speed within 0.06 s, stops within 0.1 s and
+    0.3 mm, sines 0.99 at all three with at most 0.5 mm position error and 4630 N.
+  - Head tilt: the head is top-heavy. With the motors off it rests on a stop (down at 1.45 rad, past
+    the URDF limit 1.396 and the soft limit 1.296). Its weight torque crosses zero near 0.35 rad and
+    grows towards both ends: about 7 Nm near 1.2 to 1.3 rad, 4 to 6 Nm at −0.3 rad; friction 1 to
+    1.8 Nm. On a release from the stop the soft limit safety (k_velocity 3, i.e. 15 Nm, limited by
+    the effort fraction) lifts it to about 1.32 rad in 0.15 s (1.7 rad/s); at 0.3 its 5.4 Nm only
+    balanced the head at 1.43 rad. Moving into range at i 33 went in stick-slip jumps (a −0.32 rad/s
+    spike halted it; the head fell back onto the stop); at WG's i 100 smoothly. Steps ±0.2 rad/s:
+    108 % up, 97 % down. The whole soft range (−0.34 to 1.27 rad) at 0.1 rad/s: smooth, at most
+    7.1 Nm. Sines 0.97 / 0.87 / 0.70 / 0.01 at 0.25 / 0.5 / 1 / 2 Hz with about 40 mrad position
+    error: each reversal has to swing the integral across twice the friction, about 30 mrad at
+    i 100, and the 2 Hz swing (±16 mrad) stays inside that.
+  - Head pan: steps 80 % at i 8, 91 to 93 % at i 25; sines 0.90 / 0.91 / 0.97 / 0.82 (6 to 67 deg) with
+    14 to 18 mrad position error and up to 0.72 Nm (friction about 0.3 Nm).
+  - Both head joints read velocity in steps of 0.105 rad/s (10000 pulses per motor revolution,
+    reductions 6 and 5.86; the boards' encoder reduction is not part of it): 0.2 to 0.3 Nm of ripple
+    per count at these p.
+- **Known limits:** after a move the integral keeps the last force while friction holds the joint
+  (torso up to about 1200 N, i.e. motor current for nothing). The head's tracking is limited by
+  friction. A halt drops the head.
+- **Next:** in the custom controller (D30), besides acceleration feedforward: friction compensation in
+  the direction of the reference (torso about 2600 N, head tilt 1 to 1.8 Nm, pan 0.3 Nm), gravity
+  compensation for the head tilt as a function of position (from the curve above), and a slow leak
+  of the integral at standstill.
