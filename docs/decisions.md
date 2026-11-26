@@ -644,3 +644,47 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   sine with a different i (D28's next steps) can tell those apart and can run on either arm. Giskard's
   limits from D28 apply to both arms. Next for velocity control: that test, the 1 kHz recording,
   then the head.
+
+## D30: The shoulder pan is a PI on a compliant arm; acceleration feedforward next
+
+- **Status:** accepted (2026-11-26)
+- **Context:** both shoulder pans overshoot near 1.5 Hz (D28, D29). Open was whether that is the
+  controller or the arm. A PI on a rigid inertia J has its peak at √(i/J), so the peak should move
+  with i; a mechanical resonance would not.
+- **Tests** (left pan, p 18, i set at runtime with the motors halted and set back to 800; sines at
+  0.5 to 2 Hz, ±0.2 rad/s, then ±0.1 rad/s at i 800):
+  - amplitude ratio at 0.75 / 1 / 1.25 / 1.5 Hz: i 800 1.11 / 1.18 / 1.35 / 1.33, i 400 1.17 / 1.42 /
+    1.52 / 1.22, i 200 1.33 / 1.50 / 1.31 / 0.97. The peak moves down with i, but less than √i, and
+    gets higher instead of better damped. At ±0.2 rad/s the pan reaches the 9 Nm clamp from 1.25 Hz
+    (i 800, i 400) and the ratios above that are the clamp's.
+  - The arm's impedance (fundamental of effort over that of velocity, per frequency, below the
+    clamp) is the same under all three i within about 0.3 kg m², so it describes the arm. Its
+    apparent inertia rises from 2.7 kg m² at 0.5 Hz to 4.9 kg m² at 2 Hz, and its damping from 3.4 to
+    about 16 Nm s/rad: not a rigid body.
+- **Model:** two masses through a spring and damper, seen from the motor (where the encoder is):
+  Z(s) = Jm s + bm + (k + c s) Jl s / (Jl s² + c s + k). Least squares over the unclamped points:
+  Jl 2.7 kg m², k about 850 Nm/rad, c 18 Nm s/rad, bm 3.4 Nm s/rad, so the arm's own resonance is
+  near 2.8 Hz (above the tested range, extrapolated). The fit puts almost no inertia on the motor
+  side; that split is not well determined. Relative error 5 % (rigid inertia: 16 %).
+- **Check on new data** (i 800, ±0.1 rad/s, below the clamp up to 1.5 Hz): measured 1.04 / 1.23 /
+  1.33 / 1.58 at 0.5 / 1 / 1.25 / 1.5 Hz against the model's 1.03 / 1.17 / 1.32 / 1.58. At 1.75 and
+  2 Hz the clamp was reached again (10 to 14 % of the time). The measured lag is 5 to 17 deg above the
+  model's (no delays in the model). The damping rose to 5 Nm s/rad at half the amplitude: part of the
+  friction is Coulomb, about 0.4 to 0.5 Nm.
+- **Decision:**
+  - Up to about 1.25 Hz the overshoot is the PI's own (on this inertia p 18 / i 800 give ζ ≈ 0.2;
+    even a rigid arm would show 1.17 at 1 Hz). Above that the compliance and the clamp dominate;
+    without the clamp the model has about 1.85 at 2 Hz.
+  - The gains stay (D28). More p helps the model only somewhat (p 40: peak 1.5 instead of 2.1) and
+    doubled the noise on the right arm.
+  - Next: a velocity controller with acceleration feedforward (J a, plus viscous and Coulomb
+    friction) and a command timeout. In the model, feedforward of 2.7 a + 3.4 v takes the peak from
+    2.1 to about 1.3 and keeps the ratio at 1.0 to 1.02 up to 1 Hz. `pid_controller`'s feedforward
+    scales the velocity reference only, so this needs its own controller; the 1 kHz recording should
+    come first to measure the delays the model leaves out.
+- **Consequences for Giskard:** each rad/s² costs the pan about 2.7 Nm (about 4 to 5 Nm near
+  1.5 Hz). Its URDF limit of 30 Nm allows about 9.5 rad/s² at 1 rad/s; at `max_effort_fraction` 0.3
+  (9 Nm) about 2 rad/s². Braking windows of 0.1 to 0.5 s at 1 rad/s ask for 4 to 20 rad/s², so the
+  pan's acceleration limit has to come from its effort limit, not from the braking window alone.
+- **Note:** the impedance fit and the model were scratch scripts on the CSVs from
+  `velocity_step_test.py --csv`; not yet in the repository.
