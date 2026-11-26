@@ -9,14 +9,18 @@ Workspace-level repository for porting the IAI PR2 from ROS 1 Noetic to ROS 2 Ja
 
 ## Running
 
-On c1, in a container shell, one launch file starts everything that runs there: the power board
-(with the e-stop auto restart), the diagnostic and dashboard aggregators, and the motor chain.
-The motors stay halted (read-only) unless commanding is enabled (decision D20):
+On c1, in a container shell, one launch file starts everything that runs there (D34): the power
+board (with the e-stop auto restart), the diagnostic and dashboard aggregators, the motor chain
+with commanding enabled for every joint that has a controller (effort fraction 1.0), the arm,
+torso, head, base, odometry and gripper controllers, the gripper action servers and the joystick
+teleop. It logs `PR2 is ready` once every controller is active; the motors stay halted until the
+e-stop is released.
 
 ```bash
 ros2 launch pr2_ros2_bringup pr2.launch.py
-ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=true \
-    commanded_joints:=r_wrist_roll_joint,r_wrist_flex_joint   # wrist only, 10% effort limit
+ros2 launch pr2_ros2_bringup pr2.launch.py start_controllers:=false teleop:=false \
+    commanded_joints:=head_pan_joint,head_tilt_joint max_effort_fraction:=0.6   # one group, for tests
+ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false  # read-only
 ros2 launch pr2_ros2_bringup pr2.launch.py -s                 # all arguments
 ```
 
@@ -58,7 +62,7 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 |---|---|
 | Messages (`pr2_msgs`, `pr2_controllers_msgs`) | ported |
 | EtherCAT (`eml`, `ethercat_hardware`) | ported; reads the robot exactly like ROS 1 |
-| ros2_control (`pr2_ros2_control`) | `/joint_states` match ROS 1 for all 45 joints; velocity as ROS 1 by default, over N samples optional (D22, D27); velocity control of both arms (30 % effort), torso and head (60 %) with WG's trajectory gains (D27 to D31); the base controller and odometry ported from ROS 1, joystick teleop (D32); the gripper controllers and action servers ported from ROS 1, joystick open and close (D33) |
+| ros2_control (`pr2_ros2_control`) | `/joint_states` match ROS 1 for all 45 joints; velocity as ROS 1 by default, over N samples optional (D22, D27); velocity control of both arms (30 % effort), torso and head (60 %) with WG's trajectory gains (D27 to D31); the base controller and odometry ported from ROS 1, joystick teleop (D32); the gripper controllers and action servers ported from ROS 1, joystick open and close (D33); one launch starts all controllers, action servers and the joystick (D34) |
 | Calibration | uses the offsets ROS 1 stored on the boards; no ROS 2 routine yet |
 | Commanding motors, controllers | gated effort commanding (D20); right wrist under velocity control verified with provisional gains (D23); controller reset on halt/release still missing |
 | Dashboard (`rqt_pr2_dashboard`, aggregators) | ported; motors and diagnostics live, breakers/runstops/battery wait for their drivers |

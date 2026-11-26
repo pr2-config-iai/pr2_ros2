@@ -842,3 +842,54 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
     did in ROS 1.
 - **Known limits / next:** no ROS 2 gripper calibration yet (the offsets on the boards are used,
   D8).
+
+## D34: One launch file starts every controller, at effort fraction 1.0
+
+- **Status:** accepted (2026-11-26); supersedes D31's "each runs in a launch of its own" and the
+  per-group `max_effort_fraction` of D28 and D31 for normal operation
+- **Context:** the controllers were spawned by hand, one group per launch, because
+  `max_effort_fraction` is one value for all joints and the groups were tested at different ones
+  (arms 0.3, torso and head 0.6, base 1.0).
+- **Decision:**
+  - `pr2_ros2_bringup pr2.launch.py` starts everything that runs on c1: power board, diagnostics,
+    the motor chain with commanding enabled for the 31 joints that have a controller (all actuated
+    joints but `laser_tilt_mount_joint`), the eight controllers (both arms, torso, head, base,
+    odometry, both grippers) with one spawner each, the gripper action servers and the joystick
+    teleop. Once every spawner has exited it logs `PR2 is ready`, or names the controllers that did
+    not start. Arguments `start_controllers`, `teleop`, `commanding_enabled`, `commanded_joints`
+    and `max_effort_fraction` keep single-group tests and read-only runs possible.
+  - `max_effort_fraction` 1.0 for all joints (as ROS 1, which had no such limit). The arm, torso and
+    head controllers keep their own output and integral clamps (9 / 3 Nm, 6000 N, 0.79 / 10.8 Nm),
+    which are now below the hardware limit, where conditional integration cannot wind up (D31). What
+    changes is `enforceSafety`: beyond a soft limit or a velocity limit it can push with the full
+    URDF effort (arm 30 Nm instead of 9, head tilt up to its k_velocity bound of 15 Nm instead of
+    10.8).
+  - `joint_state_broadcaster` gets the 45 joints and position, velocity and effort explicitly. With
+    both lists empty it claims every state interface that exists when it is configured, including
+    those `pid_controller` exports for chaining; with all spawners starting at once it was
+    configured after the arm, torso and head controllers, and the controller manager then refused
+    the D26 restart ("preceding controller joint_state_broadcaster is currently active"), so the
+    motors stayed halted on release. Reproduced with `mock_components` (a `pid_controller` spawned
+    before the broadcaster); with the explicit list the same restart succeeds and `/joint_states`
+    is unchanged.
+  - The controller manager's console warning per overrun is off (`overruns.print_warnings: false`);
+    `pr2_control_node`'s "Realtime Control Loop" diagnostic still counts them, as ROS 1 did.
+- **Findings:**
+  - With all controllers running a cycle goes over 1 ms about a dozen times a minute (before: about
+    once). The EtherCAT round trip is ROS 1's (670 us average, about 930 us per-second maximum,
+    D19; `ecat0` is at 100 Mbit with interrupt coalescing already minimal), the controllers add
+    about 38 us on average (joint_state_broadcaster 15.6, arms 5 to 6, odometry 3.9, head 3.5,
+    base 2.0, grippers under 1; at most about 130 us), so more of the round trip's tail crosses
+    1 ms. An overrun cycle lasts 1.0x ms and the next starts at once; the loop stays at 1003 Hz
+    (ROS 1 halts below 750 Hz). The 5.6 ms ones are the dropped frames of D28.
+  - `pid_controller` (4.43) takes the measured velocity as its reference on activation
+    (`set_current_state_as_first_setpoint`, default true) and writes no command while its reference
+    is NaN; references do not time out. So after the launch or a release the arms, torso and head
+    hold the velocity they had at that moment.
+- **Verified on the robot:** `PR2 is ready` with all eight controllers active; on the e-stop release
+  the restart and the motor release went through, and over the next 3 s no joint moved (arms at
+  most 0.4 Nm, torso 8.6 N, head tilt 3.5 Nm at 1.308 rad after the soft limit safety lifted it);
+  the joystick drove the base and opened and closed both grippers.
+- **Known limits:** a joint still moving at the release (e.g. sagging on its springs) keeps that
+  velocity until a reference arrives, and a reference stays until the next one; both want the
+  command timeout of the custom controller (D30).
