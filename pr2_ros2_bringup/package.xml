@@ -16,7 +16,9 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>diagnostic_aggregator</exec_depend>
+  <exec_depend>pr2_controllers_msgs</exec_depend>
   <exec_depend>pr2_dashboard_aggregator</exec_depend>
+  <exec_depend>pr2_gripper_action</exec_depend>
   <exec_depend>pr2_power_board</exec_depend>
   <exec_depend>pr2_ros2_control</exec_depend>
   <exec_depend>pr2_run_stop_auto_restart</exec_depend>

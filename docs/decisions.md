@@ -795,3 +795,50 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   and navigation); the head mode only holds the base, there is no head control from the joystick;
   decide later whether the casters go back to ROS 1's start behaviour; watch the 1 to 2 %
   odometry offset.
+
+## D33: The gripper controllers and action servers ported from ROS 1, with joystick teleop
+
+- **Status:** accepted (2026-11-26)
+- **Context:** after the base (D32), the grippers. As there, the goal is ROS 1's behaviour. ROS 1
+  ran `pr2_mechanism_controllers/Pr2GripperController` per gripper (`pr2_gripper_controllers.yaml`:
+  p 10000, d 1000), a `pr2_gripper_action` node in each controller's namespace
+  (`pr2_default_controllers.launch`), and IAI's DS4 teleop added two `pr2_teleop/teleop_gripper`
+  nodes.
+- **Decision:**
+  - `Pr2GripperController` (pr2_controllers fork, library `pr2_mechanism_controllers_gripper`) as
+    a ros2_control controller, ROS 1's update line for line: Noetic Pid on the gap error with
+    `-velocity` as error derivative, dt since the previous update, effort limited to the command's
+    `max_effort` when >= 0, state (`JointControllerState`) every 10th update. Activation holds the
+    current gap with zero effort (ROS 1 `starting()`), so a gripper is limp after a start or an
+    e-stop release (D26 restarts it) until it gets a command. Registered as `r_gripper_controller`
+    and `l_gripper_controller` in `controllers.yaml`, not started by the launch; they need
+    `r_gripper_joint,l_gripper_joint` in `commanded_joints` (otherwise the hardware refuses the
+    effort interface and activation fails).
+  - Same differences as the base controller: activation needs `<joint>/calibrated` (FAILURE
+    otherwise; ROS 1 refused to load), an uncalibrated update writes 0, deactivation zeroes the
+    effort; the command goes through a RealtimeBuffer.
+  - `pr2_gripper_action` ported to rclcpp_action, same names, parameters and goal logic, started by
+    `pr2_ros2_bringup grippers.launch.py`. Differences forced by ROS 2 actions, accepted: a goal
+    replaced by a new one, or dropped because the controller tracks another setpoint, ends ABORTED
+    (ROS 1: PREEMPTED); a cancel for a goal that already finished does nothing (ROS 1 then sent the
+    stop command, leaving the gripper limp); after dropping a goal for another setpoint the state
+    message is not evaluated further (ROS 1 tried to finish the goal again, which actionlib refused).
+  - Teleop: `pr2_teleop_gripper.py`, ROS 1 `teleop_gripper` unchanged (open 0.08, close -100, both
+    with max_effort -1, sent with every joy message while held, no deadman), started twice by
+    `teleop.launch.py` with IAI's buttons (0 opens, 3 closes, both grippers together).
+- **Verified:**
+  - Offline (`mock_components`): efforts 90, 50, -30, -510 N for the four limit cases match the
+    formula; state at 100 Hz; uncalibrated joint refused; the action's success, feedback,
+    replacement, cancel (with ROS 1's stop command), other-setpoint abort after the 1 s grace, stall
+    abort after 0.1 s, no stall with max_effort 0, 5 s watchdog; teleop buttons.
+  - On the robot (both grippers calibrated from the offsets on their WG06 boards, r -54.65,
+    l -60.75): at 20 N both open and close at about 35 to 40 mm/s and settle within 0.2 mm (40 and
+    80 mm); closed empty they stop at a 1 mm gap pressing about 10 N (p times the error). Goals
+    succeed 10 mm before the target (ROS 1's `goal_threshold` 0.01), the controller then finishes
+    the move. Closing further than the fingers can go aborts as stalled after 0.1 s and keeps
+    pressing with the goal's effort (ROS 1 sends no stop on a stall). The joystick works on both
+    grippers; its unlimited close commands about -1e6 N, which the URDF limit (1000 N), the safety
+    controller and the motor board's current limit bring down to -169 N on both, as the same chain
+    did in ROS 1.
+- **Known limits / next:** no ROS 2 gripper calibration yet (the offsets on the boards are used,
+  D8).
