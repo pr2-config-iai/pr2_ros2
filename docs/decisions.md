@@ -617,3 +617,30 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   that predicts from the commanded torque (no window delay) and acceleration feedforward, in a
   custom controller if needed (with a command timeout for Giskard); a sine run on the pan with a
   different i to tell a controller resonance from a mechanical one; then the left arm and the head.
+
+## D29: The left arm uses the right arm's velocity gains
+
+- **Status:** accepted (2026-11-26)
+- **Context:** D28 tuned the right arm only. WG used the same arm gains on both sides, and whether
+  the shoulder resonance is the same on the other arm says something about its cause.
+- **Decision:** `l_arm_velocity_controller` (not started by the launch) is `r_arm_velocity_controller`
+  with the `l_` joints: same gains and clamps, for `max_effort_fraction:=0.3`. It claims none of the
+  right arm's joints, so both can run together.
+- **Verified on the robot** (left arm alone commanded, launched through `pr2_ros2_bringup`'s
+  `pr2.launch.py`; same tests as D28: ±0.2 rad/s, steps of 1.5 s, sines of 0.5 to 2 Hz, one joint
+  at a time from the wrist up, no watchdog halt):
+  - steps: every joint 0.292 to 0.298 rad of 0.3 rad (97 to 99 %), both directions alike; stops
+    within 4 mrad; held joints within 2.4 mrad.
+  - sines, amplitude ratio (lag) at 0.5 / 1 / 2 Hz: wrist roll 1.00 / 0.97 / 0.94 (3 to 15 deg),
+    wrist flex 0.99 / 0.99 / 0.98 (4 to 13 deg), forearm roll 1.00 / 1.00 / 0.99 (3 to 14 deg),
+    elbow 0.98 / 1.04 / 1.06 (3 to 15 deg), upper arm roll 0.97 / 1.03 / 1.07 (3 to 8 deg); position
+    errors within 7 mrad. The elbow's and upper arm roll's velocity errors reach 0.2 rad/s at 5 mrad
+    position error, i.e. quantization ripple (D28), not tracking.
+  - shoulders at 0.5 / 1 / 1.5 / 2 Hz: lift 1.01 / 1.10 / 1.25 / 1.19 (4 to 50 deg); pan 1.02 / 1.17
+    / 1.33 / 0.76, at 2 Hz at the 9 Nm clamp with 77 deg lag. The same as the right arm (lift 1.19 at
+    2 Hz, pan 1.15 at 1 Hz, about 1.3 at 1.5 Hz, clamp at 2 Hz).
+- **Consequences:** the gains hold for both arms. The shoulder resonance near 1.5 Hz is the same on
+  both, so it is not a defect of one arm: it comes from the controller or the arm design. The pan
+  sine with a different i (D28's next steps) can tell those apart and can run on either arm. Giskard's
+  limits from D28 apply to both arms. Next for velocity control: that test, the 1 kHz recording,
+  then the head.
