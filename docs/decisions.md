@@ -893,3 +893,39 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 - **Known limits:** a joint still moving at the release (e.g. sagging on its springs) keeps that
   velocity until a reference arrives, and a reference stays until the next one; both want the
   command timeout of the custom controller (D30).
+
+## D35: The base Hokuyo on c2, started over ssh from the one launch file
+
+- **Status:** accepted (2026-11-26)
+- **Context:** both Hokuyos (UTM-30LX) are plugged into c2 (pr2b), which now runs Jazzy in its own
+  distrobox container, `ubuntu2404b`, with `ros-jazzy-urg-node`. ROS 1 started them from
+  `pr2_bringup/pr2-c2.launch` through a `<machine>` tag; ROS 2 launch has no machine tag. The tilt
+  laser was not used with ROS 1 (nothing at IAI commands `laser_tilt_controller`).
+- **Decision:**
+  - `hokuyos.launch.py` keeps ROS 1's parameters (`/base_scan`, frame `base_laser_link`, ±2.2689
+    rad, no intensities). The tilt laser's driver only starts with `tilt_laser:=true`, unlike ROS
+    1, which always ran it; `laser_tilt_controller` stays unported for now.
+  - `pr2.launch.py` starts it on c2 (`hokuyos`, default true) through
+    `pr2_ros2_bringup/scripts/pr2b_run.py`: `ssh pr2b docker start ubuntu2404b && docker exec -i
+    ... pr2b_run.sh <workspace setup.bash> <ROS_DOMAIN_ID> <discovery range> ros2 launch ...`, with
+    c1's workspace (the same path, home is shared) and discovery settings. `docker exec` leaves the
+    command running when its client goes away, so `pr2b_run.sh` watches its stdin and stops the
+    command with SIGINT at EOF; `pr2b_run.py` closes that stdin on SIGINT or SIGTERM, and it closes
+    by itself if `pr2b_run.py` dies. ssh has to work without a prompt (BatchMode).
+  - `pr2_analyzers.yaml` gets ROS 1's Lasers group back, with Base Hokuyo only
+    (`find_and_remove_prefix: base_hokuyo_node`, 2 items); ROS 2's urg_node reports the same names
+    ("Hardware Status", "Laser Scan topic status").
+- **Alternatives:** `ssh -t` with `distrobox enter` (a closed connection leaves the command
+  running in the container); starting `hokuyos.launch.py` on c2 by hand (still possible with
+  `hokuyos:=false`).
+- **Findings:** the container's `/home/ease` was read-only (no ROS log directory) after c2 booted:
+  dockerd started before the `bg` NFS mount of `c1:/home`, so the container bound the directory
+  of the root export underneath, and c1 exports `/` read-only. Restarting the container (`distrobox
+  stop ubuntu2404b`) fixes it; to stop it coming back after every c2 boot, docker has to wait for
+  the mount (e.g. `RequiresMountsFor=/home` on docker.service, needs sudo on c2; not done).
+- **Verified:** `pr2b_run.py` stopped a dummy on c2 on SIGINT, SIGTERM and SIGKILL, and a c1 launch
+  stopped a c2 launch and its child cleanly on Ctrl-C, with nothing left on c2. On the robot, from
+  `pr2.launch.py`: `/base_scan` at 40.1 Hz on c1, stamps 1.5 ms old on arrival (c1 and c2 clocks
+  agree), 1041 beams, plausible ranges, `base_laser_link` 0.275 m ahead of and 0.252 m above
+  `base_link`; urg_node reports "Sensor works well." and 0 retrieve errors, and Lasers / Base
+  Hokuyo is OK on the dashboard aggregator.

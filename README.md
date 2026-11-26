@@ -5,7 +5,7 @@ Workspace-level repository for porting the IAI PR2 from ROS 1 Noetic to ROS 2 Ja
 - [`pr2_ros2.repos`](pr2_ros2.repos): the repositories and branches that make up the ROS 2 workspace.
 - [`docs/decisions.md`](docs/decisions.md): the decisions we make along the way and why.
 - [`pr2_ros2_bringup`](pr2_ros2_bringup): launch files and config for the robot (so far: the Hokuyo
-  lasers, the power board, diagnostics and dashboard aggregation).
+  lasers, the power board, diagnostics and dashboard aggregation, the controllers and teleop).
 
 ## Running
 
@@ -13,25 +13,29 @@ On c1, in a container shell, one launch file starts everything that runs there (
 board (with the e-stop auto restart), the diagnostic and dashboard aggregators, the motor chain
 with commanding enabled for every joint that has a controller (effort fraction 1.0), the arm,
 torso, head, base, odometry and gripper controllers, the gripper action servers and the joystick
-teleop. It logs `PR2 is ready` once every controller is active; the motors stay halted until the
-e-stop is released.
+teleop, and, over ssh on c2, the base Hokuyo (D35). It logs `PR2 is ready` once every controller is
+active; the motors stay halted until the e-stop is released.
 
 ```bash
 ros2 launch pr2_ros2_bringup pr2.launch.py
 ros2 launch pr2_ros2_bringup pr2.launch.py start_controllers:=false teleop:=false \
     commanded_joints:=head_pan_joint,head_tilt_joint max_effort_fraction:=0.6   # one group, for tests
 ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false  # read-only
+ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false     # without c2
 ros2 launch pr2_ros2_bringup pr2.launch.py -s                 # all arguments
 ```
 
-The Hokuyos are on c2: `ros2 launch pr2_ros2_bringup hokuyos.launch.py` there. The dashboard runs
-anywhere: `ros2 run rqt_pr2_dashboard rqt_pr2_dashboard`.
+The Hokuyos are on c2, in the container `ubuntu2404b`; `pr2.launch.py` starts `hokuyos.launch.py`
+there through ssh (`pr2b_run.py`). By hand, with `hokuyos:=false` on c1: `ros2 launch
+pr2_ros2_bringup hokuyos.launch.py` on c2. The dashboard runs anywhere: `ros2 run rqt_pr2_dashboard rqt_pr2_dashboard`.
 
 The motor chain under ros2_control lives in `pr2_ethercat_drivers/pr2_ros2_control`; see its README.
 
 ## Setup
 
-ROS 2 runs in a distrobox container on c1 (pr2a), next to ROS 1 on the host (decision D1).
+ROS 2 runs in a distrobox container on c1 (pr2a), next to ROS 1 on the host (decision D1), and in
+one on c2 (pr2b), `ubuntu2404b`, for the Hokuyos (D35; it needs `ros-jazzy-urg-node`, and ssh from c1
+to `pr2b` without a prompt). Both use the same workspace, since the home directory is shared.
 
 `~/.bashrc` is shared with the host, and distrobox copies the host's environment into the
 container. To get a clean Jazzy environment with the workspace in container shells (decisions D13,
@@ -66,7 +70,7 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 | Calibration | uses the offsets ROS 1 stored on the boards; no ROS 2 routine yet |
 | Commanding motors, controllers | gated effort commanding (D20); right wrist under velocity control verified with provisional gains (D23); controller reset on halt/release still missing |
 | Dashboard (`rqt_pr2_dashboard`, aggregators) | ported; motors and diagnostics live, breakers/runstops/battery wait for their drivers |
-| Hokuyos | launch file written; they are on c2, which is not set up yet |
+| Hokuyos | base laser running on c2, started from `pr2.launch.py`, diagnostics in Lasers (D35); tilt laser driver optional (`tilt_laser:=true`), `laser_tilt_controller` not ported |
 | Power board | ported (`power_board.launch.py`); state, diagnostics and the dashboard breaker buttons verified; releasing the e-stop switches the breakers on and resets the motors (`pr2_run_stop_auto_restart`), verified: all motor boards OK, motors halted |
 | Batteries (`ocean_battery_driver`, on c2) | not started |
 | IMU, cameras, F/T sensors, motorconf | not started |

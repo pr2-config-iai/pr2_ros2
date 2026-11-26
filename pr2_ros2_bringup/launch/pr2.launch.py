@@ -14,11 +14,12 @@
   base_controller, base_odometry, r_gripper_controller, l_gripper_controller.
 - grippers.launch.py: the gripper action servers.
 - teleop.launch.py: the joystick (DS4 on /dev/input/js0): base and grippers.
+- hokuyos.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's
+  container ubuntu2404b by pr2b_run.py, which stops it again with this launch (D35). Only the base
+  laser by default; tilt_laser:=true adds the tilt laser.
 
 Once every spawner has finished, a "PR2 is ready" line says so, or names the controllers that
 did not start.
-
-The Hokuyos are on c2: hokuyos.launch.py runs there.
 
     ros2 launch pr2_ros2_bringup pr2.launch.py
     # one group only, e.g. for velocity_step_test.py:
@@ -26,14 +27,16 @@ The Hokuyos are on c2: hokuyos.launch.py runs there.
         commanded_joints:=head_pan_joint,head_tilt_joint max_effort_fraction:=0.6
     # read-only:
     ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false
+    # without c2 (then hokuyos.launch.py can be started there by hand):
+    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false
 """
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, RegisterEventHandler
 from launch.event_handlers import OnProcessExit
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
+from launch_ros.substitutions import FindPackagePrefix, FindPackageShare
 
 BASE_JOINTS = [f'{c}_caster_{j}_joint' for c in ['bl', 'br', 'fl', 'fr'] for j in ['l_wheel', 'r_wheel', 'rotation']]
 ARM_JOINTS = [f'{s}_{j}_joint' for s in ['r', 'l'] for j in ['shoulder_pan', 'shoulder_lift', 'upper_arm_roll',
@@ -94,6 +97,10 @@ def generate_launch_description():
                               description='Spawn the arm, torso, head, base and gripper controllers'),
         DeclareLaunchArgument('teleop', default_value='true',
                               description='Start the joystick teleop (base and grippers)'),
+        DeclareLaunchArgument('hokuyos', default_value='true',
+                              description='Start hokuyos.launch.py on c2 (pr2b) over ssh'),
+        DeclareLaunchArgument('tilt_laser', default_value='false',
+                              description='With hokuyos: also the tilt laser (unused with ROS 1)'),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'power_board.launch.py')),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'diagnostics.launch.py')),
         IncludeLaunchDescription(
@@ -108,4 +115,11 @@ def generate_launch_description():
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'grippers.launch.py'), condition=start_controllers),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'teleop.launch.py'),
                                  condition=IfCondition(LaunchConfiguration('teleop'))),
+        ExecuteProcess(
+            name='pr2b_hokuyos',
+            cmd=[PathJoinSubstitution([FindPackagePrefix('pr2_ros2_bringup'), 'lib', 'pr2_ros2_bringup', 'pr2b_run.py']),
+                 '--', 'ros2', 'launch', 'pr2_ros2_bringup', 'hokuyos.launch.py',
+                 ['tilt_laser:=', LaunchConfiguration('tilt_laser')]],
+            condition=IfCondition(LaunchConfiguration('hokuyos')),
+            output='screen'),
     ])

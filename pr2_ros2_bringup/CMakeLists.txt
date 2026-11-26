@@ -4,6 +4,7 @@ project(pr2_ros2_bringup)
 find_package(ament_cmake REQUIRED)
 
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
-install(PROGRAMS scripts/pr2_teleop_base.py scripts/pr2_teleop_gripper.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/pr2_teleop_base.py scripts/pr2_teleop_gripper.py scripts/pr2b_run.py scripts/pr2b_run.sh
+        DESTINATION lib/${PROJECT_NAME})
 
 ament_package()
