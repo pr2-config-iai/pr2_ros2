@@ -736,3 +736,62 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   the direction of the reference (torso about 2600 N, head tilt 1 to 1.8 Nm, pan 0.3 Nm), gravity
   compensation for the head tilt as a function of position (from the curve above), and a slow leak
   of the integral at standstill.
+
+## D32: The base controller and odometry ported from ROS 1, with joystick teleop
+
+- **Status:** accepted (2026-11-26)
+- **Context:** the base and a joystick next, before acceleration feedforward (D30). The ROS 1
+  driver drives well, so the goal is the same behaviour, not new control. The reference is what
+  the ROS 1 robot runs: `pr2_fixes` (noetic-devel), whose `pr2_mechanism_controllers` sources are
+  identical to the fork's HEAD and whose `pr2_base_controller2.yaml` is IAI's, not WG's.
+- **Decision:**
+  - `pr2_mechanism_controllers` (fork pr2_controllers, `ros-jazzy-main`) builds only
+    `Pr2BaseController2` and `Pr2Odometry`, as ros2_control controllers, with all messages. The
+    control and odometry math is ROS 1's line for line. Noetic's `Pid::computeCommand(error,
+    error_dot, dt)` and `MultiChannelTransferFunctionFilter` are reproduced (`ros1_compat.h`):
+    the ROS 2 Pid clamps and integrates differently.
+  - Values of the ROS 1 robot, written out in `controllers.yaml` (`base_controller`,
+    `base_odometry`; not started by the launch): casters position PD p 100, d 8 front / 12 back;
+    wheels p 100, **d 11** (WG: 5) on IAI's call order (p on the rolling the steering error causes,
+    d on the speed error); **feedforward 0.005 m/s, 0.025 rad/s**; limits 1.0 m/s, 2.0 rad/s,
+    2.0 m/s² and rad/s², timeout 0.2 s; 0.5/0.5 velocity filters; odometry as `pr2_odometry.yaml`
+    (100 Hz, tf off). Run with `max_effort_fraction:=1.0` and the 12 caster and wheel joints in
+    `commanded_joints`.
+  - Differences from ROS 1 (asked for or accepted): (1) on activation the casters keep their
+    angle (ROS 1 turned them to 0 or π at the first zero command); kept while the port is new,
+    may go back. (2) After activation a new command is needed (ROS 1 ramped towards the last
+    command from before the restart for up to the timeout): a bug fix. (3) Deactivation zeroes the
+    efforts (ROS 1's controller manager did that every cycle). (4) The unused caster velocity
+    controllers are not created. A NaN guard and activation resets I had added were removed again:
+    ROS 1 already zeroes NaN components.
+  - Calibration: every joint has the state interface `calibrated` (1 when calibrated or not in
+    need of it), worked out when the hardware is configured. Both controllers claim it for the
+    casters and refuse to activate (lifecycle FAILURE, they stay inactive) if one is not, as ROS 1
+    refused to load.
+  - Teleop (`pr2_ros2_bringup teleop.launch.py`): `joy_linux` (deadzone 0.12, repeat 10 Hz, as the
+    ROS 1 robot's `joy_node`) and `pr2_teleop_base.py`, the base part of ROS 1 `teleop_pr2` with
+    IAI's DS4 settings: L1 deadman, R1 run, right stick translates (axes 4/3), left stick turns
+    (axis 0), 0.5/0.5/0.8 and run 1.0/1.0/1.4, L2 holds the base at 0 (ROS 1's head mode),
+    repeated stamps and a joystick silent for 0.5 s count as a released deadman. Not
+    `teleop_twist_joy`: its turbo button drives alone, ROS 1's run button did not. Unlike ROS 1 one
+    zero is sent on release.
+- **Verified:**
+  - Offline: unit tests of the Pid and filter replicas and the kinematics; with `mock_components`
+    the efforts for forward, sideways and turning commands match the ROS 1 formulas by hand
+    (4.443 Nm; −113.9/91.9 and 157.08; 19.33/−76.01 and −78.54), uncalibrated casters are refused.
+    A reviewer pass against the ROS 1 sources (Pid and filter checked against the Noetic binaries,
+    the SVD bit-identical, interface order in ros2_control 4.50) found no math error; its findings
+    (teleop head mode, calibration only known after activation, ERROR vs FAILURE, joystick deadzone,
+    small differences) are fixed.
+  - On the robot (all casters calibrated, standing still: odometry exactly 0): 0.01 m/s sideways
+    turns all casters to 90° (±2 mrad) and moves 3.3 cm at 0.0115 m/s (0.015 commanded with the
+    feedforward: a P on wheel speed leaves a friction error); 0.05 rad/s turns them to ±45°/135°
+    first, the base waits about 1.2 s, then turns at 0.052 to 0.06 rad/s. A turn at 0.3 rad/s
+    (0.30 measured) stopped by the odometry at 90° ends at 91.5° (the 2 rad/s² ramp), looked like
+    90°, within 4 mm of the spot. 0.1 m/s for 5 s: 0.480 m forward, 0.481 m back to within 1 mm,
+    measured 47 to 47.5 cm (1 to 2 % more in the odometry, as ROS 1 with the same
+    `wheel_radius_multiplier` 1.0). Driving with the joystick feels like ROS 1.
+- **Known limits / next:** no mux on `/base_controller/command` yet (ROS 1 had one between teleop
+  and navigation); the head mode only holds the base, there is no head control from the joystick;
+  decide later whether the casters go back to ROS 1's start behaviour; watch the 1 to 2 %
+  odometry offset.
