@@ -88,7 +88,7 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 | Head Kinect (`freenect_stack`, on c2) | ported, with rgbd_launch's processing and ROS 1's settings and watchdog, started from `pr2.launch.py`; registered point cloud at 10 Hz with the `depth_image_proc` fix of our `image_pipeline` fork (D37); no calibration (as ROS 1) |
 | Batteries (`ocean_battery_driver` on c2, `power_monitor` on c1) | ported, started from `pr2.launch.py`; all 4 IBPS and their diagnostics in Power System, `power_state` from the advanced estimator (D38); port 3 reports no batteries (as it would in ROS 1) |
 | Torso IMU (`microstrain_3dmgx2_imu`, `imu_monitor`, on c1) | ported from upstream's ROS 2 branch, made to behave as ROS 1 (names, single thread), started from `pr2.launch.py`; tested on the robot (rate, stamps, self test, calibrate), its yaw changes in the EKF (D42, D43) |
-| Computer monitors (`pr2_computer_monitor`, on c1 and c2) | ported, started from `pr2.launch.py`: NTP (ntpsec's `ntpdate`), CPU temperature and usage (`mpstat`, missing under ROS 1), drive temperature (hwmon instead of hddtemp) and disk usage; Computers group in the diagnostics (D44). c2's clock follows internet servers instead of c1 (WARN, about 4 ms) |
+| Computer monitors (`pr2_computer_monitor`, on c1 and c2) | ported, started from `pr2.launch.py`: NTP (ntpsec's `ntpdate`), CPU temperature and usage (`mpstat`, missing under ROS 1; load thresholds for 32 cores, D45), drive temperature (hwmon instead of hddtemp) and disk usage; Computers group in the diagnostics (D44). c2's clock follows internet servers instead of c1 (WARN, about 4 ms) |
 | Other cameras, F/T sensors, motorconf | not started |
 
 ## Known issues on the ROS 1 side

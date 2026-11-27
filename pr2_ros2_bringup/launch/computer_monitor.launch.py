@@ -10,6 +10,8 @@ Differences from ROS 1 (D44):
 - ntp_monitor reads the output of ntpsec's ntpdate (Ubuntu 24.04).
 - cpu_monitor has mpstat (sysstat), which ROS 1 lacked, so CPU usage is checked; c2's num_cores is
   32 (ROS 1: 12, but c2 has 32 cores).
+- cpu_monitor's load average thresholds are scaled to the 32 cores of c1 and c2: 20 (1 min) and 12
+  (5 min), four times ROS 1's 5 and 3, which were meant for the original PR2's 8 cores (D45).
 - hd_monitor reads the drive temperatures from the kernel's hwmon sensors instead of an hddtemp
   daemon.
 """
@@ -18,19 +20,25 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
 
-# Per computer: (ntp_monitor's node name and arguments, cpu_monitor's and hd_monitor's node names, num_cores)
+# Per computer: ntp_monitor's node name and arguments, cpu_monitor's and hd_monitor's node names,
+# num_cores, and cpu_monitor's load average thresholds (ROS 1's 5.0 and 3.0 for 8 cores, scaled
+# to 32, D45)
 COMPUTERS = {
     'c1': {
         'ntp': ('ntp_c1', ['0.de.pool.ntp.org', '--offset-tolerance', '50000', '--diag-hostname=c1']),
         'cpu': 'realtime_cpu_monitor',
         'hd': 'realtime_hd_monitor',
         'num_cores': 32.0,
+        'load1_threshold': 20.0,
+        'load5_threshold': 12.0,
     },
     'c2': {
         'ntp': ('ntp_c2', ['c1', '--diag-hostname=c2']),
         'cpu': 'realtime_cpu_monitor_c2',
         'hd': 'realtime_hd_monitor_c2',
         'num_cores': 32.0,
+        'load1_threshold': 20.0,
+        'load5_threshold': 12.0,
     },
 }
 
@@ -52,6 +60,8 @@ def monitors(context):
                  'check_ipmi_tool': False,
                  'enforce_clock_speed': False,
                  'num_cores': c['num_cores'],
+                 'load1_threshold': c['load1_threshold'],
+                 'load5_threshold': c['load5_threshold'],
              }]),
     ]
 

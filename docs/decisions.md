@@ -1375,3 +1375,18 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   setting on c2 (no sudo there).
 - **Needs:** `ntpsec-ntpdate` and `sysstat` in both containers (`rosdep` installs them through the
   keys `ntpdate` and `sysstat`).
+
+## D45: Load average thresholds scaled to the 32 cores of c1 and c2
+
+- **Status:** accepted (2026-11-27)
+- **Context:** with `mpstat` installed (D44), the dashboard showed c1's CPU Usage as WARN "High
+  Load". The CPU itself was nearly idle: 1.1 % per core on average and 7 % at most, with
+  `pr2_control_node` the largest process at 21 % of one core. The warning came from
+  `cpu_monitor`'s load average check, which warns above 5.0 (1 min) or 3.0 (5 min); c1's 5 min load
+  was 3.42. Those thresholds date from the original PR2's computers, with 8 cores
+  (`cpu_monitor`'s default `num_cores`). c1 and c2 have 32 cores each, so a load of 3 is about a
+  tenth of the machine. ROS 1 raised the same warning (the baseline bag of D6 has "Unable to Check
+  CPU Usage, High Load").
+- **Decision (the user's):** scale the thresholds to the core count, four times ROS 1's:
+  `load1_threshold` 20.0 and `load5_threshold` 12.0 on c1 and c2, set in
+  `computer_monitor.launch.py`. The monitor code is unchanged.
