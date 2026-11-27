@@ -20,7 +20,7 @@
 - The torso IMU (microstrain_3dmgx2_imu's imu_node, /torso_lift_imu/data) and imu_monitor, with
   ROS 1's parameters (D42).
 - robot_localization's ekf_node in place of ROS 1's robot_pose_ekf: TF odom_combined ->
-  base_footprint, from the odometry only until the IMU is ported (D36).
+  base_footprint, from the odometry and the IMU's yaw changes (D36, D43).
 - c2.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's container
   ubuntu2404b by pr2b_run.py, which stops it again with this launch (D35). The base laser
   (tilt_laser:=true adds the tilt laser), with localization map server and amcl (D36), with
@@ -156,6 +156,9 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration('imu'))),
         Node(package='imu_monitor', executable='imu_monitor.py', name='imu_monitor', output='screen',
              condition=IfCondition(LaunchConfiguration('imu'))),
+        # The IMU for the EKF, ignored while the base stands still, as robot_pose_ekf did (D43).
+        Node(package='pr2_ros2_bringup', executable='imu_standstill_gate', name='imu_standstill_gate',
+             output='screen', condition=IfCondition(LaunchConfiguration('localization'))),
         Node(
             package='robot_localization', executable='ekf_node', name='ekf_node', output='screen',
             parameters=[PathJoinSubstitution([FindPackageShare('pr2_ros2_bringup'), 'config', 'ekf.yaml'])],

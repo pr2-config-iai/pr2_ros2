@@ -1254,3 +1254,63 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   service succeeded (15.6 s, drift 27 < 90 mdeg/s) with correct stamps afterwards.
 - **Needs:** `ros-jazzy-self-test` in the c1 container.
 - **Open:** the IMU in the EKF (how to fuse it is a separate decision).
+
+## D43: The IMU in the EKF: its yaw changes (differential), as robot_pose_ekf
+
+- **Status:** accepted (2026-11-27)
+- **Context:** ROS 1's robot_pose_ekf (read from its source) fused, at every update, the change of
+  the IMU's yaw since the previous update (relative measurement, variance orientation covariance
+  x dt^2) plus the IMU's absolute roll and pitch; x and y came from the odometry. With the IMU's
+  orientation variance (0.00017^2 = 2.9e-8) against the odometry's (rotation_stddev 0.017:
+  2.9e-4 while moving, 1e-12 while still), the yaw followed the IMU while the base moved and was
+  held by the odometry while it stood still, so gyro drift (the Inertia-Link has no magnetometer;
+  27 mdeg/s at the calibration of D42) could not turn a standing robot. robot_localization has no
+  identical mode.
+- **Decision:** `imu0: /torso_lift_imu/data` with yaw only, `imu0_differential: true`: the filter
+  differentiates consecutive IMU orientations into a yaw rate with variance
+  2 x orientation_stdev^2 x dt.
+  - robot_localization raises every measurement variance below 1e-9 to 1e-9 (`ekf.cpp`). With
+    ROS 1's `orientation_stdev` 0.00017 the IMU's yaw rate variance is 5.8e-10, so it and the
+    odometry's standstill 1e-12 both became 1e-9 and weighed the same. Measured: at standstill the
+    filtered yaw drifted -0.77 deg in 80 s, half the IMU's -1.46 deg, with the odometry at 0.
+  - Raising the driver's `orientation_stdev` to 0.007 (variance 1e-6) did not help: the filtered
+    yaw still drifted half as fast as the IMU's (-0.92 vs -1.83 deg in 80 s). robot_localization
+    predicts to each measurement's stamp, and its yaw rate process noise (0.02 x dt) adds about
+    1e-4 between an odometry and the next IMU message, far above both variances, so each message
+    overwrites the yaw rate. A simulation of that filter gives the same half (0.52 and 0.50), and
+    shows that no IMU variance gives both no standstill drift and an IMU-dominated yaw rate while
+    turning (1e-4: 13 % drift, 74 % IMU; 1e-2: 0 %, none). ROS 1 applied both sensors in one
+    update, without a prediction between them.
+  - So `imu_standstill_gate` (pr2_ros2_bringup, C++) republishes `/torso_lift_imu/data` as
+    `/torso_lift_imu/data_ekf`, with the orientation variance set to 1e3 when the odometry at the
+    IMU message's stamp reports standstill (all velocities within 1e-8, Pr2Odometry's own condition
+    for its 1e-12), unchanged otherwise and when there is no odometry (none within 1 s; ROS 1 then
+    used the IMU alone). Simulated: 0 % drift at standstill, 95 % IMU while turning. The driver
+    keeps ROS 1's `orientation_stdev` 0.00017. The gate adds about 0.5 ms to the IMU path (measured
+    publisher to subscriber through it, isolated); the odometry path is untouched. Chosen by the
+    user over gating inside the driver (would tie it to the base odometry) and over a fork of
+    robot_localization. The IMU orientation is turned into `base_footprint` through the
+  constant mounting rotation (`imu_joint`, upside down; robot_localization subtracts its
+  roll/pitch/yaw offsets, so the base's yaw is the IMU's minus a constant pi). The IMU's stamps
+  are 40 ms older than the odometry's (D42 `time_offset`), so `smooth_lagged_data: true` with
+  `history_length: 0.5` inserts them at their time (robot_pose_ekf updated at the older sensor's
+  stamp). Chosen by the user from three options.
+- **Alternatives:** `imu0_relative` (absolute IMU yaw from its first value: the IMU sets the yaw
+  even while the base stands, so gyro drift turns a standing robot, and an IMU orientation reset
+  turns the heading); the gyro's yaw rate (raw gyro instead of the IMU's orientation, weighted
+  only about 2:1 against the odometry while moving).
+- **Differences from ROS 1:**
+  - No IMU roll and pitch (2D mode, D36).
+  - robot_localization's differential covariance (sum of both variances x dt) instead of
+    robot_pose_ekf's (variance x dt^2).
+  - The EKF reads the IMU through `imu_standstill_gate` (one more node).
+- **Consequences:** with `imu:=false` the filter has no IMU input and runs on the odometry alone.
+  The gate runs with `localization` (as the EKF).
+- **Verified on the robot (2026-11-27, standstill only):** over 80 s the filtered yaw stayed at
+  0.00 deg while the IMU's yaw drifted -0.73 deg (as ROS 1 in the baseline bag: odom_combined yaw
+  constant over 30 s with the IMU running). The gate gated every message at standstill and added
+  0.18 ms median, 0.28 ms 99th percentile, to the IMU path.
+- **Open, to test later at the robot (needs driving):** turn the base in place (e.g. 90 deg with the
+  joystick) and check yaw sign and rate of `/odometry/filtered` against the odometry and the IMU,
+  and that the filtered yaw follows the IMU while turning; ideally the same turn under ROS 1 for
+  comparison.

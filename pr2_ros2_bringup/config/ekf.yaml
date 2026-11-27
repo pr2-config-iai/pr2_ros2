@@ -1,10 +1,18 @@
 # robot_localization's ekf_node in place of ROS 1's robot_pose_ekf (pr2_bringup/pr2.launch),
 # decision D36: TF odom_combined -> base_footprint for amcl.
 #
-# ROS 1 fused base_odometry/odom with the torso IMU (torso_lift_imu/data); the IMU driver
-# (microstrain_3dmgx2_imu) is not ported yet, so for now only the odometry goes in. Its pose is in
-# frame "odom", which is not in TF, so the filter takes the velocities (twist, in base_footprint
-# since the message has no child frame) and integrates them.
+# Odometry: its pose is in frame "odom", which is not in TF, so the filter takes the velocities
+# (twist, in base_footprint since the message has no child frame) and integrates them.
+#
+# IMU (D43): yaw in differential mode, i.e. only the change of the IMU's yaw between messages, as
+# robot_pose_ekf used it (relative yaw). While the base moves, the IMU's yaw rate (variance about
+# 1e-9) dominates the odometry's (2.9e-4). While it stands still, imu_standstill_gate raises the
+# IMU's variance (torso_lift_imu/data_ekf) so that the odometry holds the yaw, as in ROS 1:
+# robot_localization predicts between the two sensors' stamps, so otherwise each message overwrites
+# the yaw rate and half the IMU's gyro drift reaches the filtered yaw. Roll and pitch, which ROS 1
+# also took from the IMU, are not used (2D mode). The IMU's stamps are 40 ms older than the
+# odometry's; smooth_lagged_data inserts them at their time (robot_pose_ekf updated at the older
+# sensor's stamp).
 ekf_node:
   ros__parameters:
     frequency: 100.0                      # the odometry's and /joint_states' rate (D41; robot_pose_ekf: 30)
@@ -25,3 +33,16 @@ ekf_node:
                    true,  true,  false, false, false, true,
                    false, false, false]
     odom0_queue_size: 10
+
+    imu0: /torso_lift_imu/data_ekf
+    #             x      y      z      roll   pitch  yaw
+    #             vx     vy     vz     vroll  vpitch vyaw
+    #             ax     ay     az
+    imu0_config: [false, false, false, false, false, true,
+                  false, false, false, false, false, false,
+                  false, false, false]
+    imu0_differential: true
+    imu0_queue_size: 10
+
+    smooth_lagged_data: true
+    history_length: 0.5

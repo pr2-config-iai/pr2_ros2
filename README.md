@@ -80,10 +80,10 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 | Dashboard (`rqt_pr2_dashboard`, aggregators) | ported; motors and diagnostics live, breakers and runstops from the power board, battery from `power_monitor` (D38) |
 | Hokuyos | base laser running on c2, started from `pr2.launch.py`, diagnostics in Lasers (D35); tilt laser driver optional (`tilt_laser:=true`), `laser_tilt_controller` not ported |
 | Power board | ported (`power_board.launch.py`); state, diagnostics and the dashboard breaker buttons verified; releasing the e-stop switches the breakers on and resets the motors (`pr2_run_stop_auto_restart`), verified: all motor boards OK, motors halted |
-| Localization | map server and amcl (nav2) on c2, ROS 1's map and parameters; robot_localization EKF on c1 in place of robot_pose_ekf, odometry only (D36) |
+| Localization | map server and amcl (nav2) on c2, ROS 1's map and parameters; robot_localization EKF on c1 in place of robot_pose_ekf, odometry and the IMU's yaw changes, the IMU ignored at standstill (`imu_standstill_gate`); verified at standstill, turning still to test (D36, D43) |
 | Head Kinect (`freenect_stack`, on c2) | ported, with rgbd_launch's processing and ROS 1's settings and watchdog, started from `pr2.launch.py`; registered point cloud at 10 Hz with the `depth_image_proc` fix of our `image_pipeline` fork (D37); no calibration (as ROS 1) |
 | Batteries (`ocean_battery_driver` on c2, `power_monitor` on c1) | ported, started from `pr2.launch.py`; all 4 IBPS and their diagnostics in Power System, `power_state` from the advanced estimator (D38); port 3 reports no batteries (as it would in ROS 1) |
-| Torso IMU (`microstrain_3dmgx2_imu`, `imu_monitor`, on c1) | ported from upstream's ROS 2 branch, made to behave as ROS 1 (names, single thread), started from `pr2.launch.py`; tested on the robot (rate, stamps, self test, calibrate), not yet in the EKF (D42) |
+| Torso IMU (`microstrain_3dmgx2_imu`, `imu_monitor`, on c1) | ported from upstream's ROS 2 branch, made to behave as ROS 1 (names, single thread), started from `pr2.launch.py`; tested on the robot (rate, stamps, self test, calibrate), its yaw changes in the EKF (D42, D43) |
 | Other cameras, F/T sensors, motorconf | not started |
 
 ## Known issues on the ROS 1 side
