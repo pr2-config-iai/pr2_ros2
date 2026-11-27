@@ -1197,3 +1197,60 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
     - +0.202 and −0.195 rad/s in the second half of the steps, stopping within 0.011 rad;
     - the tilt did not move;
     - the timeout fired only after the sequence ended, once.
+
+## D41: The EKF at 100 Hz instead of ROS 1's 30 Hz
+
+- **Status:** accepted (2026-11-27)
+- **Context:** Giskard closes its loop at 80 Hz (`pr2_velocity.py`) on the base pose from
+  `/odometry/filtered` and on the arm joints from `/joint_states` (100 Hz). The EKF ran at ROS 1's
+  30 Hz (D36). Measured with Giskard base goals (15 cm sideways at 0.19 m/s): the base overshoots
+  by 9 to 11 mm, about the distance it covers in 50 ms, so Giskard brakes on a pose that is too old.
+  In a goal for the whole chain from `map` to a gripper, the base pose is up to 33 ms older than
+  the arm joints it is combined with. `/base_odometry/odom`, the filter's only input, comes at
+  99 Hz.
+- **Decision:** `frequency: 100.0` in `config/ekf.yaml`, the rate of the odometry and of
+  `/joint_states`. Asked for by the user.
+- **Difference from ROS 1:** robot_pose_ekf ran at `freq: 30`.
+
+## D42: The torso IMU: microstrain_3dmgx2_imu from upstream's ROS 2 branch, made to behave as ROS 1
+
+- **Status:** accepted (2026-11-27)
+- **Context:** ROS 1 `pr2_bringup/pr2.launch` ran Noetic's `microstrain_3dmgx2_imu` 1.5.13
+  `imu_node` on c1 (3DM-GX2 at `/etc/ros/sensors/imu` -> `/dev/ttyUSB0`, `imu` remapped to
+  `torso_lift_imu`) and `imu_monitor` (gyro drift diagnostic, from `base_odometry/odometer`).
+  Jazzy has no GX2 driver (D36). Upstream ros-drivers/microstrain_3dmgx2_imu has a
+  `dashing-devel` branch, a ROS 2 conversion of 1.5.13 with the device library (`3dmgx2.cc`)
+  unchanged.
+- **Decision:**
+  - Fork pr2-config-iai/microstrain_3dmgx2_imu, `ros-jazzy-main` from `dashing-devel`
+    (upstream = ros-drivers), with these changes so it behaves as 1.5.13:
+    - Names as ROS 1: `imu/data`, `imu/is_calibrated` (latched), `imu/calibrate`, private
+      `~/add_offset`, `~/self_test` (dashing had them all without the `imu/` namespace).
+    - One thread, as ROS 1: the read loop runs the executor between readings (`spin_some`), so the
+      services, the self test and the diagnostics (1 s updater timer) never run concurrently with
+      the serial reads. Dashing read in its own thread next to the executor (calibrate and self
+      test raced the reads on the port), published diagnostics after every reading (100 Hz,
+      `force_update`) and never joined the thread (abort on shutdown).
+    - A plain `imu_node` executable instead of the component; parameters declared with ROS 1's
+      defaults (dashing's untyped `declare_parameter` no longer works); log4cxx dropped.
+  - `imu_monitor` ported in our pr2_robot fork, same logic, rclpy.
+  - `pr2.launch.py` starts both on c1 (argument `imu`, default true) with ROS 1's parameters; three
+    remaps replace ROS 1's namespace remap. Devices/IMU analyzer as in ROS 1 (4 items).
+- **Differences from ROS 1:**
+  - ROS 1's unused `autostart` parameter is left out.
+  - The self test's Resume Test calls `initTime` again before restarting the stream. Measured
+    without it: after a self test (passed, 18 s) the stamps were about 93 s behind and nearly all
+    stamp gaps were zero or negative, recovering only about 2 s per minute. The device library
+    times each sample from the IMU's ticks since `initTime`, counting the wraps of the 32-bit
+    counter (every 2^32 / 19660800 Hz = 218 s); the Gyro Bias Test's `initGyros` zeroes that wrap
+    count, so after a wrap the stamps jump back by 218 s and the time filter (gain 0.01 per second)
+    recovers slowly. The calibrate service is not affected: it runs `initGyros` right after
+    `initTime`. Verified with the fix: self test 240 s after `initTime`, stamps afterwards 10 ms
+    apart and 43 ms before arrival (as before the test). The self-test code is 1.5.13's, so ROS 1
+    should behave the same (not checked). Nothing calls the self test automatically, in ROS 1 or
+    here.
+- **Verified on the robot (2026-11-27):** 100 Hz, stamps 10 ms apart and 40 ms (`time_offset`)
+  before arrival, |a| 9.84 m/s^2, Devices/IMU 4 items OK, self test passed (18 s), calibrate
+  service succeeded (15.6 s, drift 27 < 90 mdeg/s) with correct stamps afterwards.
+- **Needs:** `ros-jazzy-self-test` in the c1 container.
+- **Open:** the IMU in the EKF (how to fuse it is a separate decision).

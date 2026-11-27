@@ -22,6 +22,10 @@ repositories:
     type: git
     url: https://github.com/pr2-config-iai/image_pipeline.git
     version: ros-jazzy-main
+  microstrain_3dmgx2_imu:
+    type: git
+    url: https://github.com/pr2-config-iai/microstrain_3dmgx2_imu.git
+    version: ros-jazzy-main
   pr2_common:
     type: git
     url: https://github.com/pr2-config-iai/pr2_common.git

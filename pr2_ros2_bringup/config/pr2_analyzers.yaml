@@ -2,7 +2,7 @@
 #
 # Taken from ROS 1 pr2_bringup/config/pr2_analyzers.yaml, but only with the groups whose
 # diagnostics ROS 2 publishes so far: every expected item that nobody publishes would hold the
-# dashboard's diagnostics icon at error. Add the remaining ROS 1 groups (Devices, Cameras, Computers,
+# dashboard's diagnostics icon at error. Add the remaining ROS 1 groups (Cameras, Computers,
 # Joints) back as their drivers are ported, and the tilt Hokuyo to Lasers.
 diag_agg:
   ros__parameters:
@@ -94,3 +94,14 @@ diag_agg:
           path: Base Hokuyo
           find_and_remove_prefix: ['base_hokuyo_node']
           num_items: 2
+    # ROS 1's Devices group also had the joystick and sound_play; only the IMU is ported so far
+    # (imu_node's 3 items + imu_monitor's 'imu_node: Imu Drift Monitor', D42).
+    devices:
+      type: diagnostic_aggregator/AnalyzerGroup
+      path: Devices
+      analyzers:
+        imu:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: IMU
+          find_and_remove_prefix: ['imu_node']
+          num_items: 4

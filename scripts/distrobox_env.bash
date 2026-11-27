@@ -52,4 +52,14 @@ if [ -f "$_pr2_ws/install/setup.bash" ]; then
   source "$_pr2_ws/install/setup.bash"
 fi
 
-unset _pr2_ws _pr2_path _pr2_entries _pr2_entry
+# The CRAM venv (Giskard, ~/libs/cognitive_robot_abstract_machine), once it has been created. Last,
+# so ROS and the workspace stay first on PYTHONPATH. A shell started from an active one (PATH and
+# VIRTUAL_ENV inherited) activates it again instead of stacking it.
+_pr2_venv="$HOME/libs/cram-env"
+if [ -f "$_pr2_venv/bin/activate" ]; then
+  unset VIRTUAL_ENV
+  PATH=$(printf '%s' ":$PATH:" | sed "s|:$_pr2_venv/bin:|:|g; s|^:||; s|:$||")
+  source "$_pr2_venv/bin/activate"
+fi
+
+unset _pr2_ws _pr2_venv _pr2_path _pr2_entries _pr2_entry

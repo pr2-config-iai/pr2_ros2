@@ -17,6 +17,8 @@
   base_controller, base_odometry, r_gripper_controller, l_gripper_controller.
 - grippers.launch.py: the gripper action servers.
 - teleop.launch.py: the joystick (DS4 on /dev/input/js0): base and grippers.
+- The torso IMU (microstrain_3dmgx2_imu's imu_node, /torso_lift_imu/data) and imu_monitor, with
+  ROS 1's parameters (D42).
 - robot_localization's ekf_node in place of ROS 1's robot_pose_ekf: TF odom_combined ->
   base_footprint, from the odometry only until the IMU is ported (D36).
 - c2.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's container
@@ -107,6 +109,8 @@ def generate_launch_description():
                               description='Start hokuyos.launch.py on c2 (pr2b) over ssh'),
         DeclareLaunchArgument('tilt_laser', default_value='false',
                               description='With hokuyos: also the tilt laser (unused with ROS 1)'),
+        DeclareLaunchArgument('imu', default_value='true',
+                              description='Start the torso IMU driver and imu_monitor'),
         DeclareLaunchArgument('localization', default_value='true',
                               description='ekf_node on c1, map server and amcl on c2 (pr2b)'),
         DeclareLaunchArgument('kinect', default_value='true',
@@ -132,6 +136,26 @@ def generate_launch_description():
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'grippers.launch.py'), condition=start_controllers),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'teleop.launch.py'),
                                  condition=IfCondition(LaunchConfiguration('teleop'))),
+        # ROS 1 pr2.launch's imu_node. Its <remap from="imu" to="torso_lift_imu"/> renamed the
+        # namespace; ROS 2 remaps whole names, so one per topic and service. ROS 1's "autostart"
+        # was not read by the driver and is left out.
+        Node(
+            package='microstrain_3dmgx2_imu', executable='imu_node', name='imu_node', output='screen',
+            remappings=[('imu/data', 'torso_lift_imu/data'),
+                        ('imu/is_calibrated', 'torso_lift_imu/is_calibrated'),
+                        ('imu/calibrate', 'torso_lift_imu/calibrate')],
+            parameters=[{
+                'time_offset': -0.040,
+                'port': '/run/host/etc/ros/sensors/imu',  # the host's /etc/ros/sensors/imu
+                'frame_id': 'imu_link',
+                'autocalibrate': False,
+                'assume_calibrated': True,
+                'orientation_stdev': 0.00017,
+                'max_drift_rate': 0.00157,
+            }],
+            condition=IfCondition(LaunchConfiguration('imu'))),
+        Node(package='imu_monitor', executable='imu_monitor.py', name='imu_monitor', output='screen',
+             condition=IfCondition(LaunchConfiguration('imu'))),
         Node(
             package='robot_localization', executable='ekf_node', name='ekf_node', output='screen',
             parameters=[PathJoinSubstitution([FindPackageShare('pr2_ros2_bringup'), 'config', 'ekf.yaml'])],

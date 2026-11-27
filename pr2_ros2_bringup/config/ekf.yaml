@@ -7,7 +7,7 @@
 # since the message has no child frame) and integrates them.
 ekf_node:
   ros__parameters:
-    frequency: 30.0                       # robot_pose_ekf freq
+    frequency: 100.0                      # the odometry's and /joint_states' rate (D41; robot_pose_ekf: 30)
     sensor_timeout: 1.0                   # robot_pose_ekf sensor_timeout
     two_d_mode: true
     publish_tf: true

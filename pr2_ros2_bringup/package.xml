@@ -31,6 +31,8 @@
   <exec_depend>freenect_launch</exec_depend>
   <exec_depend>ocean_battery_driver</exec_depend>
   <exec_depend>power_monitor</exec_depend>
+  <exec_depend>microstrain_3dmgx2_imu</exec_depend>
+  <exec_depend>imu_monitor</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
