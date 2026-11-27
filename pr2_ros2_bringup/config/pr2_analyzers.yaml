@@ -3,8 +3,7 @@
 # Taken from ROS 1 pr2_bringup/config/pr2_analyzers.yaml, but only with the groups whose
 # diagnostics ROS 2 publishes so far: every expected item that nobody publishes would hold the
 # dashboard's diagnostics icon at error. Add the remaining ROS 1 groups (Devices, Cameras, Computers,
-# Joints) back as their drivers are ported, the batteries to Power System and the tilt Hokuyo to
-# Lasers.
+# Joints) back as their drivers are ported, and the tilt Hokuyo to Lasers.
 diag_agg:
   ros__parameters:
     motors:
@@ -55,12 +54,35 @@ diag_agg:
       type: diagnostic_aggregator/GenericAnalyzer
       path: Realtime Controllers
       startswith: ['controller_manager', 'Realtime Control Loop']
-    # ROS 1 also expected IBPS 0-3 and Smart Battery 0.0-3.3 here (ocean_battery_driver, not ported).
+    # The power board (power_node2) and the batteries (ocean_server on c2, D38), as in ROS 1.
     power:
       type: diagnostic_aggregator/GenericAnalyzer
       path: Power System
       timeout: 10.0
-      startswith: ['Power board']
+      num_items: 21
+      discard_stale: true
+      expected: [
+          'IBPS 0',
+          'IBPS 1',
+          'IBPS 2',
+          'IBPS 3',
+          'Smart Battery 0.0',
+          'Smart Battery 0.1',
+          'Smart Battery 0.2',
+          'Smart Battery 0.3',
+          'Smart Battery 1.0',
+          'Smart Battery 1.1',
+          'Smart Battery 1.2',
+          'Smart Battery 1.3',
+          'Smart Battery 2.0',
+          'Smart Battery 2.1',
+          'Smart Battery 2.2',
+          'Smart Battery 2.3',
+          'Smart Battery 3.0',
+          'Smart Battery 3.1',
+          'Smart Battery 3.2',
+          'Smart Battery 3.3']
+      startswith: ['Power board', 'IBPS', 'Smart Battery']
     # ROS 1 also had 'Tilt Hokuyo' (prefix tilt_hokuyo_node, 2 items); its driver only runs with
     # hokuyos.launch.py tilt_laser:=true, as the tilt laser was not used with ROS 1.
     lasers:

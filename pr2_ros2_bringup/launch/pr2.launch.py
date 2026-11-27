@@ -2,6 +2,8 @@
 
 - power_board.launch.py: power board driver; releasing the e-stop switches the breakers on and
   resets the motors (pr2_run_stop_auto_restart).
+- power_monitor: the power state estimate (power_state) from the batteries and the power board,
+  as in ROS 1 pr2.launch, with its history log in the host's /var/ros/power_monitor (D38).
 - diagnostics.launch.py: diagnostic aggregator and dashboard aggregator (for rqt_pr2_dashboard).
 - pr2_ros2_control's pr2_control.launch.py: the EtherCAT motor chain under ros2_control, with
   robot_state_publisher and joint_state_broadcaster. Here with commanding enabled for every joint
@@ -18,8 +20,8 @@
   base_footprint, from the odometry only until the IMU is ported (D36).
 - c2.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's container
   ubuntu2404b by pr2b_run.py, which stops it again with this launch (D35). The base laser
-  (tilt_laser:=true adds the tilt laser), with localization map server and amcl (D36), and with
-  kinect the head Kinect (D37).
+  (tilt_laser:=true adds the tilt laser), with localization map server and amcl (D36), with
+  kinect the head Kinect (D37), and with batteries the battery servers (D38).
 
 Once every spawner has finished, a "PR2 is ready" line says so, or names the controllers that
 did not start.
@@ -31,7 +33,7 @@ did not start.
     # read-only:
     ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false
     # without c2 (then c2.launch.py can be started there by hand):
-    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false
+    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false batteries:=false
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, RegisterEventHandler
@@ -108,7 +110,14 @@ def generate_launch_description():
                               description='ekf_node on c1, map server and amcl on c2 (pr2b)'),
         DeclareLaunchArgument('kinect', default_value='true',
                               description='Start the head Kinect on c2 (pr2b)'),
+        DeclareLaunchArgument('batteries', default_value='true',
+                              description='Start the battery servers on c2 (pr2b)'),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'power_board.launch.py')),
+        # The battery history of the advanced estimator: ROS 1's /var/ros/power_monitor/power.log on
+        # the host (c1's container sees the host's /var/ros under /run/host).
+        Node(package='power_monitor', executable='power_monitor', name='power_monitor', respawn=True,
+             parameters=[{'advanced_log_file': '/run/host/var/ros/power_monitor/power.log'}],
+             output='screen'),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'diagnostics.launch.py')),
         IncludeLaunchDescription(
             launch_file('pr2_ros2_control', 'pr2_control.launch.py'),
@@ -133,9 +142,11 @@ def generate_launch_description():
                  ['hokuyos:=', LaunchConfiguration('hokuyos')],
                  ['tilt_laser:=', LaunchConfiguration('tilt_laser')],
                  ['localization:=', LaunchConfiguration('localization')],
-                 ['kinect:=', LaunchConfiguration('kinect')]],
+                 ['kinect:=', LaunchConfiguration('kinect')],
+                 ['batteries:=', LaunchConfiguration('batteries')]],
             condition=IfCondition(PythonExpression(["'", LaunchConfiguration('hokuyos'), "'.lower() == 'true' or '",
                                                     LaunchConfiguration('localization'), "'.lower() == 'true' or '",
-                                                    LaunchConfiguration('kinect'), "'.lower() == 'true'"])),
+                                                    LaunchConfiguration('kinect'), "'.lower() == 'true' or '",
+                                                    LaunchConfiguration('batteries'), "'.lower() == 'true'"])),
             output='screen'),
     ])

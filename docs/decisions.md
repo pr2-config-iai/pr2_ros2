@@ -1056,3 +1056,70 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 - **Open:** camera calibration; the Orbbec (`2bc5:0402`) on c2; Fast DDS large-data settings if
   something on c1 needs the full cloud rate; an upstream issue or PR for the `depth_image_proc`
   bug.
+
+## D38: The batteries: ocean_server on c2, power_monitor on c1
+
+- **Status:** accepted (2026-11-27)
+- **Context:** In ROS 1, `pr2-c2.launch` ran `ocean_battery_driver`'s `ocean_server` on c2
+  (respawning; `number_of_ports` 4, `port0`-`port3` = `/etc/ros/sensors/battery0`-`3`,
+  `debug_level` 0). `pr2.launch` ran `power_monitor` on c1 (respawning), which turns
+  `battery/server2` and `power_board/state` into `power_state` for the dashboard. The
+  "Power System" analyzer expected 21 items: the power board, `IBPS 0`-`3` and
+  `Smart Battery 0.0`-`3.3`. Both packages are in our `pr2_power_drivers` fork, next to the
+  ported `pr2_power_board` (D14 lists both on c2; `power_monitor` ran on c1).
+- **Decision:**
+  - **`ocean_battery_driver`** (`ros-jazzy-main` of `pr2-config-iai/pr2_power_drivers`): ported to
+    ament.
+    - `ocean_server` keeps the serial code, the threads (one per port), the diagnostics and the
+      topics `battery/server2` and `battery/server` (with the ROS 2 field names).
+    - It keeps the options `--debug`, `--count` and `--dev`, and the parameters `number_of_ports`,
+      `portN`, `debug_level`, `lag_timeout` and `stale_timeout`.
+    - `battery_check` is ported too.
+  - **`power_monitor`**: ported, with the same estimators and parameters.
+    - `power_state` is transient_local depth 1 (latched: a late subscriber gets the last message).
+    - The latched `power_board/state` is subscribed transient_local.
+    - dynamic_reconfigure became the parameter `power_state_estimator_` (0 fuel gauge,
+      1 advanced). As in ROS 1 it is applied once at startup, before `estimation_method`
+      (default `advanced`) is, so it reads 0 while the advanced estimator is active.
+  - **`pr2_ros2_bringup`**:
+    - `batteries.launch.py` (c2) runs `ocean_server` with ROS 1's parameters, on the host's
+      `/etc/ros/sensors/battery0`-`3`, seen in the container under `/run/host`.
+    - `c2.launch.py` starts it with argument `batteries` (default true), which `pr2.launch.py`
+      passes through `pr2b_run.py`.
+    - `pr2.launch.py` starts `power_monitor` on c1 with `advanced_log_file` set to
+      `/run/host/var/ros/power_monitor/power.log`. That is ROS 1's default file on the host;
+      c1's container has no `/var/ros`.
+  - The Power System analyzer is ROS 1's again: timeout 10, `num_items` 21, `discard_stale`, the
+    20 battery items expected, and `startswith` `Power board`, `IBPS` and `Smart Battery`.
+- **Differences from ROS 1:**
+  - On `MASTER_SHUTDOWN`, `power_monitor` now publishes `power_state` right away, as the code
+    intends. ROS 1 deadlocked there: `powerNodeUpdate` held the update lock while publishing, and
+    `extractObservation` locked it again (`boost::mutex` is not recursive). The lock is now
+    released first.
+  - The port threads of `ocean_server` share the node and its publishers. In ROS 1 each had its
+    own node handle and publishers of the same node.
+  - An empty `portN` counts as unset (ROS 1: `getParam` without the parameter).
+  - log4cxx is no longer used. ROS 1 only set the logger to Info, which is ROS 2's default.
+  - `battery_check` uses a ROS clock without a node in place of `ros::Time::init()`. After the
+    5 s stop timeout it detaches the thread; ROS 1's `timed_join` left it running.
+- **Findings:**
+  - Port 3's IBPS answers, but it reports all four of its batteries as not present. So there is no
+    `Smart Battery 3.x`, and Power System shows ERROR "Expected 21, found 17".
+    - The driver builds the "Not present" error status but publishes only present batteries; that
+      is ROS 1's code, so ROS 1 showed the same.
+    - Ports 0-2 report 4 batteries each, at 16.2-16.5 V and 96-100 % charge, on AC.
+  - The advanced estimator records history only when all 16 batteries report. With 12 it writes
+    nothing and falls back to the fuel gauge figures. That is why `/var/ros/power_monitor` never
+    existed under ROS 1.
+  - `power_state` on AC with full batteries reads 0 min: the batteries report a time to full of 0
+    (ROS 1's calculation).
+- **Verified on the robot:** from `pr2.launch.py`:
+  - `ocean_server` on c2 used ROS 1's ports and did not respawn;
+  - `battery/server2` and `battery/server` came from all 4 IBPS, every 2-3 s each;
+  - IBPS 0-3, Smart Battery 0.0-2.3 and the power board were OK in Power System;
+  - `power_monitor` logged ROS 1's startup lines (log file, 0 observations, fuel gauge changed
+    to advanced) and published `power_state` (advanced, 96 %, `ac_present` 12).
+
+  The depth-1 `power_state` change was built after the test and not run on the robot.
+- **Open:** port 3's battery pack (missing or disconnected?); the dashboard's battery display was
+  not checked.
