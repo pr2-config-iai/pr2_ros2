@@ -1390,3 +1390,20 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
 - **Decision (the user's):** scale the thresholds to the core count, four times ROS 1's:
   `load1_threshold` 20.0 and `load5_threshold` 12.0 on c1 and c2, set in
   `computer_monitor.launch.py`. The monitor code is unchanged.
+
+## D46: ROS 1's `ethercat_relay` is not ported
+
+- **Status:** accepted (2026-11-27)
+- **Context:** ROS 1's `pr2.launch` ran `ethercat_relay` (`topic_tools relay`), which republished
+  `pr2_ethercat/motors_halted` as `pr2_etherCAT/motors_halted`, the topic's name from before the
+  realtime node was renamed. In ROS 2, `ethercat_hardware` publishes `/pr2_ethercat/motors_halted`
+  (D14), which the dashboard aggregator and ROS 1's `calibrate_pr2.py` subscribe to. A search of
+  `pr2_fixes`, `/opt/ros/noetic`, the ROS 2 workspace and the rest of `~/workspace` found no
+  subscriber of `pr2_etherCAT/motors_halted`; the relay's line in `pr2.launch` was the only
+  occurrence.
+- **Decision (the user's):** do not port the relay. ROS 2 publishes only
+  `/pr2_ethercat/motors_halted`.
+- **Consequences:** code outside `~/workspace` that still subscribes to the old name (other
+  machines, old scripts) gets nothing and must use `/pr2_ethercat/motors_halted`. Should it turn
+  up, the relay can be added to `pr2.launch.py` (`topic_tools relay`, Jazzy); note that a plain
+  relay does not keep the topic's transient_local QoS.
