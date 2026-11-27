@@ -1123,3 +1123,77 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   The depth-1 `power_state` change was built after the test and not run on the robot.
 - **Open:** port 3's battery pack (missing or disconnected?); the dashboard's battery display was
   not checked.
+
+## D39: ROS 1's trajectory controllers and point_head_action are not ported
+
+- **Status:** accepted (2026-11-27)
+- **Context:** ROS 1's `pr2_default_controllers.launch` started `r_arm_controller`,
+  `l_arm_controller`, `head_traj_controller` and `torso_controller`. All four are
+  `robot_mechanism_controllers/JointTrajectoryActionController`. On top of them ran the actions
+  `point_head_action` and the torso's `position_joint_action` (`single_joint_position_action`).
+  ROS 2 runs velocity controllers on these joints instead (D27 to D31, D34).
+- **Decision:** none of them is ported, as they are not needed. That includes the torso's
+  `position_joint_action`, which works through `torso_controller`. The arms, torso and head stay
+  under velocity control. `laser_tilt_controller` (a `LaserScannerTrajController`) is not covered
+  by this decision.
+
+## D40: Our own velocity controller: start at zero velocity, command timeout
+
+- **Status:** accepted (2026-11-27)
+- **Context:** the arm, torso, head and wrist velocity controllers were Jazzy's `pid_controller`
+  (D27 to D31, D34). Two things were left open:
+  - On activation, and on the restart before a motor release (D26), it took the measured velocity
+    as its first reference. A joint moving at that moment, such as an arm sagging on its springs,
+    kept that velocity until a reference arrived.
+  - References never timed out, so the last velocity stayed active if the sender stopped.
+
+  No velocity controller ran on the ROS 1 robot, and ROS 1's velocity controller code is
+  experimental, so there is no ROS 1 behavior to follow here. D30 had already planned a controller
+  of our own, with a command timeout and later acceleration feedforward.
+- **Decision:** `pr2_ros2_control/JointVelocityController`, in the library `pr2_ros2_controllers`
+  of `pr2_ros2_control`, replaces `pid_controller` in `controllers.yaml` for
+  `r_wrist_velocity_controller`, `r_arm_velocity_controller`, `l_arm_velocity_controller`,
+  `torso_velocity_controller` and `head_velocity_controller`.
+  - The same interface as `pid_controller`, so the configuration, Giskard and the tools are
+    unchanged:
+    - the parameters `dof_names`, `command_interface` (`effort` only) and
+      `reference_and_state_interfaces` (`[velocity]` only);
+    - the gains `gains.<joint>.*` through `control_toolbox::PidROS`, so the PID, its anti-windup
+      and the runtime gain changes are the same code;
+    - `~/reference` (`control_msgs/MultiDOFCommand`, best effort, keep last 1) and
+      `~/controller_state` (`MultiDOFStateStamped`, every cycle);
+    - a NaN value keeps that joint's reference;
+    - references without names are taken in `dof_names` order;
+    - a reference with the wrong size or an unknown joint is ignored with a warning.
+  - On activation, every reference is 0, the integrals are cleared, and references received
+    before the activation are dropped.
+  - `command_timeout` (0.2 s, as `base_controller`'s timeout; 0 turns it off): when no reference
+    has arrived for that long, the references go to 0 and the PID holds the joints at zero
+    velocity, with a log line.
+  - On deactivation the efforts are set to 0. `pid_controller` left the last effort applied.
+  - Infinite reference values are rejected.
+  - Acceleration feedforward (D30) is not part of it yet; it waits for the 1 kHz recording.
+- **Tests:** `test_joint_velocity_controller` (gtest) drives the controller through its lifecycle
+  with real `~/reference` messages. It covers:
+  - the start at zero, and dropping references sent before the activation;
+  - names, order, NaN and invalid messages;
+  - the timeout (the reference still applies at exactly 0.2 s and is 0 at 0.201 s), and the
+    timeout off;
+  - restart and deactivation;
+  - configuring all five controllers from the robot's `controllers.yaml`, without warnings.
+- **Verified on the robot:** from `pr2.launch.py`:
+  - All controllers became active ("PR2 is ready"). The controller manager took 34 us per cycle on
+    average (D34: about 38).
+  - **E-stop release:** `pr2_control_node` restarted the seven commanding controllers in one switch
+    before the motors were released. Over the next 10 s no arm, torso or head joint moved (to
+    0.1 mrad), all references stayed 0, the arms needed at most 0.45 Nm, and the head tilt held the
+    head with about 6.7 Nm.
+  - **Timeout:**
+    - One head pan reference of 0.1 rad/s, never repeated, applied within 1 ms.
+    - The controller set it back to 0 after 0.201 s. The pan peaked at 0.105 rad/s, moved
+      0.016 rad, stopped by 0.35 s and then held; the tilt did not move.
+  - **`velocity_step_test.py`** on the head pan (`--keep-running`, ±0.2 rad/s, references every
+    10 ms):
+    - +0.202 and −0.195 rad/s in the second half of the steps, stopping within 0.011 rad;
+    - the tilt did not move;
+    - the timeout fired only after the sequence ended, once.

@@ -12,7 +12,8 @@
 - The controllers, each with its own spawner (a spawner stops at its first failure, so one
   uncalibrated joint does not keep the others from starting):
   r_arm_velocity_controller, l_arm_velocity_controller, torso_velocity_controller,
-  head_velocity_controller (velocity references on /<name>/reference, limp until the first one),
+  head_velocity_controller (velocity references on /<name>/reference; zero velocity until the
+  first one and again 0.2 s after the last one, D40),
   base_controller, base_odometry, r_gripper_controller, l_gripper_controller.
 - grippers.launch.py: the gripper action servers.
 - teleop.launch.py: the joystick (DS4 on /dev/input/js0): base and grippers.
