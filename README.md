@@ -13,8 +13,8 @@ On c1, in a container shell, one launch file starts everything that runs there (
 board (with the e-stop auto restart), the diagnostic and dashboard aggregators, the motor chain
 with commanding enabled for every joint that has a controller (effort fraction 1.0), the arm,
 torso, head, base, odometry and gripper controllers, the gripper action servers and the joystick
-teleop, the odometry filter, and, over ssh on c2, the base Hokuyo (D35) and map server and amcl
-(D36). It logs `PR2 is ready` once every controller is
+teleop, the odometry filter, and, over ssh on c2, the base Hokuyo (D35), map server and amcl
+(D36) and the head Kinect (D37). It logs `PR2 is ready` once every controller is
 active; the motors stay halted until the e-stop is released.
 
 ```bash
@@ -22,13 +22,15 @@ ros2 launch pr2_ros2_bringup pr2.launch.py
 ros2 launch pr2_ros2_bringup pr2.launch.py start_controllers:=false teleop:=false \
     commanded_joints:=head_pan_joint,head_tilt_joint max_effort_fraction:=0.6   # one group, for tests
 ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false  # read-only
-ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false   # without c2
+ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false  # without c2
 ros2 launch pr2_ros2_bringup pr2.launch.py -s                 # all arguments
 ```
 
 The Hokuyos are on c2, in the container `ubuntu2404b`; `pr2.launch.py` starts `c2.launch.py` there
-(Hokuyos, map server, amcl) through ssh (`pr2b_run.py`). By hand, with `hokuyos:=false
-localization:=false` on c1: `ros2 launch pr2_ros2_bringup c2.launch.py` on c2. Localization: set
+(Hokuyos, map server, amcl, head Kinect) through ssh (`pr2b_run.py`). By hand, with `hokuyos:=false
+localization:=false kinect:=false` on c1: `ros2 launch pr2_ros2_bringup c2.launch.py` on c2. The
+Kinect publishes under `/kinect_head` (ROS 1's topics); its 9.8 MB point clouds reach c1 at about
+3 Hz only, so use the images across machines (D37). Localization: set
 the initial pose with RViz's "2D Pose Estimate"; RViz's Map display needs Durability Policy
 Transient Local (D36). The dashboard runs anywhere: `ros2 run rqt_pr2_dashboard rqt_pr2_dashboard`.
 
@@ -38,7 +40,9 @@ The motor chain under ros2_control lives in `pr2_ethercat_drivers/pr2_ros2_contr
 
 ROS 2 runs in a distrobox container on c1 (pr2a), next to ROS 1 on the host (decision D1), and in
 one on c2 (pr2b), `ubuntu2404b`, for the Hokuyos (D35; it needs `ros-jazzy-urg-node`, `ros-jazzy-nav2-amcl`,
-`ros-jazzy-nav2-map-server`, `ros-jazzy-nav2-lifecycle-manager`, and ssh from c1 to `pr2b` without a
+`ros-jazzy-nav2-map-server`, `ros-jazzy-nav2-lifecycle-manager`, `libfreenect-dev`,
+`ros-jazzy-camera-info-manager`, `ros-jazzy-image-proc`, `ros-jazzy-depth-image-proc`,
+`ros-jazzy-image-transport-plugins`, and ssh from c1 to `pr2b` without a
 prompt). c1's container needs `ros-jazzy-robot-localization`. Both use the same workspace, since the home directory is shared.
 
 `~/.bashrc` is shared with the host, and distrobox copies the host's environment into the
@@ -77,8 +81,9 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 | Hokuyos | base laser running on c2, started from `pr2.launch.py`, diagnostics in Lasers (D35); tilt laser driver optional (`tilt_laser:=true`), `laser_tilt_controller` not ported |
 | Power board | ported (`power_board.launch.py`); state, diagnostics and the dashboard breaker buttons verified; releasing the e-stop switches the breakers on and resets the motors (`pr2_run_stop_auto_restart`), verified: all motor boards OK, motors halted |
 | Localization | map server and amcl (nav2) on c2, ROS 1's map and parameters; robot_localization EKF on c1 in place of robot_pose_ekf, odometry only (D36) |
+| Head Kinect (`freenect_stack`, on c2) | ported, with rgbd_launch's processing and ROS 1's settings and watchdog, started from `pr2.launch.py`; registered point cloud at 10 Hz with the `depth_image_proc` fix of our `image_pipeline` fork (D37); no calibration (as ROS 1) |
 | Batteries (`ocean_battery_driver`, on c2) | not started |
-| IMU (`microstrain_3dmgx2_imu`), cameras, F/T sensors, motorconf | not started |
+| IMU (`microstrain_3dmgx2_imu`), other cameras, F/T sensors, motorconf | not started |
 
 ## Known issues on the ROS 1 side
 

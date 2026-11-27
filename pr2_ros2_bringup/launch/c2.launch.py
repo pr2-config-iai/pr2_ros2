@@ -2,10 +2,11 @@
 
 pr2.launch.py on c1 starts this through pr2b_run.py (D35); by hand, in c2's container:
 
-    ros2 launch pr2_ros2_bringup c2.launch.py [hokuyos:=true] [tilt_laser:=false] [localization:=true]
+    ros2 launch pr2_ros2_bringup c2.launch.py [hokuyos:=true] [tilt_laser:=false] [localization:=true] [kinect:=true]
 
 - hokuyos.launch.py: the base laser (and the tilt laser with tilt_laser:=true).
 - localization.launch.py: map server and amcl (D36), as IAI's ROS 1 amcl ran on c2.
+- kinect_head.launch.py: the head Kinect driver, its processing and the mode watchdog (D37).
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -24,9 +25,12 @@ def generate_launch_description():
         DeclareLaunchArgument('tilt_laser', default_value='false',
                               description='With hokuyos: also the tilt laser (unused with ROS 1)'),
         DeclareLaunchArgument('localization', default_value='true', description='Start map server and amcl'),
+        DeclareLaunchArgument('kinect', default_value='true', description='Start the head Kinect'),
         IncludeLaunchDescription(launch_file('hokuyos.launch.py'),
                                  launch_arguments={'tilt_laser': LaunchConfiguration('tilt_laser')}.items(),
                                  condition=IfCondition(LaunchConfiguration('hokuyos'))),
         IncludeLaunchDescription(launch_file('localization.launch.py'),
                                  condition=IfCondition(LaunchConfiguration('localization'))),
+        IncludeLaunchDescription(launch_file('kinect_head.launch.py'),
+                                 condition=IfCondition(LaunchConfiguration('kinect'))),
     ])

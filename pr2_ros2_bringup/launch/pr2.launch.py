@@ -18,7 +18,8 @@
   base_footprint, from the odometry only until the IMU is ported (D36).
 - c2.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's container
   ubuntu2404b by pr2b_run.py, which stops it again with this launch (D35). The base laser
-  (tilt_laser:=true adds the tilt laser) and, with localization, map server and amcl (D36).
+  (tilt_laser:=true adds the tilt laser), with localization map server and amcl (D36), and with
+  kinect the head Kinect (D37).
 
 Once every spawner has finished, a "PR2 is ready" line says so, or names the controllers that
 did not start.
@@ -30,7 +31,7 @@ did not start.
     # read-only:
     ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false
     # without c2 (then c2.launch.py can be started there by hand):
-    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false
+    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, RegisterEventHandler
@@ -105,6 +106,8 @@ def generate_launch_description():
                               description='With hokuyos: also the tilt laser (unused with ROS 1)'),
         DeclareLaunchArgument('localization', default_value='true',
                               description='ekf_node on c1, map server and amcl on c2 (pr2b)'),
+        DeclareLaunchArgument('kinect', default_value='true',
+                              description='Start the head Kinect on c2 (pr2b)'),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'power_board.launch.py')),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'diagnostics.launch.py')),
         IncludeLaunchDescription(
@@ -129,8 +132,10 @@ def generate_launch_description():
                  '--', 'ros2', 'launch', 'pr2_ros2_bringup', 'c2.launch.py',
                  ['hokuyos:=', LaunchConfiguration('hokuyos')],
                  ['tilt_laser:=', LaunchConfiguration('tilt_laser')],
-                 ['localization:=', LaunchConfiguration('localization')]],
+                 ['localization:=', LaunchConfiguration('localization')],
+                 ['kinect:=', LaunchConfiguration('kinect')]],
             condition=IfCondition(PythonExpression(["'", LaunchConfiguration('hokuyos'), "'.lower() == 'true' or '",
-                                                    LaunchConfiguration('localization'), "'.lower() == 'true'"])),
+                                                    LaunchConfiguration('localization'), "'.lower() == 'true' or '",
+                                                    LaunchConfiguration('kinect'), "'.lower() == 'true'"])),
             output='screen'),
     ])

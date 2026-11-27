@@ -1,0 +1,10 @@
+# Parameters of the head Kinect's driver (/kinect_head/driver), which ROS 1's
+# /etc/ros/noetic/freenect.launch set on the parameter server (kinect_head.launch.py).
+/**:
+  ros__parameters:
+    # set the camera to highres (1: SXGA 1280x1024; kinect_mode_watchdog.py keeps it there)
+    image_mode: 1
+    # IMPORTANT. Set the value of the PNG compression to something low. Default was 9 which chokes
+    # the framerate to 3 fps. ROS 1: /kinect_head/depth_registered/image_raw/compressedDepth/png_level;
+    # image_transport's ROS 2 name of it (relative to the namespace, '/' -> '.'):
+    .depth_registered.image_raw.compressedDepth.png_level: 2

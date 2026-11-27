@@ -979,3 +979,80 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   RViz, amcl takes the initial pose and localizes, and `map` -> `odom_combined` -> `base_footprint`
   matches `/amcl_pose`.
 - **Open:** the IMU (a GX2 driver port) into the filter.
+
+## D37: The head Kinect on c2: freenect_stack ported, depth_image_proc fixed
+
+- **Status:** accepted (2026-11-27)
+- **Context:** The head Kinect (Kinect 360, USB on c2) ran in ROS 1 with code-iai's
+  `freenect_stack` and the robot's `/etc/ros/noetic/freenect.launch`:
+  - namespace `kinect_head`, with the URDF's frames `head_mount_kinect_rgb_optical_frame` and
+    `head_mount_kinect_ir_optical_frame` and no `kinect_frames` TF;
+  - `device_id` `#1`, the device's depth registration, and all of `rgbd_launch`'s processing;
+  - `image_mode` 1 (SXGA RGB) and compressedDepth `png_level` 2 for `depth_registered/image_raw`,
+    both set on the parameter server.
+
+  `iai_kinect_bringup.launch` added `iai_kinect_watchdog`, which sets `image_mode` back from 2 to 1
+  at 10 Hz. The `/etc/ros/openni_head.launch` it also includes no longer exists. Jazzy has no
+  freenect driver (libfreenect 0.5.3 has no OpenNI2 plugin) and no `rgbd_launch`.
+- **Decision:**
+  - **`freenect_stack`**: forked to `pr2-config-iai/freenect_stack`, with `ros-jazzy-main` on
+    code-iai's master and ported to ament.
+    - `freenect_camera`: the nodelet is an rclcpp component (executable `freenect_node`), and its
+      dynamic_reconfigure config became parameters with the same names, ranges and defaults.
+    - `freenect_launch`: `freenect.launch.py` runs the driver and `rgbd_launch`'s processing as
+      `image_proc` and `depth_image_proc` components in one container, with ROS 1's node names,
+      topics and parameters, plus `kinect_frames`.
+  - **`image_pipeline`**: forked to `pr2-config-iai/image_pipeline`, with `ros-jazzy-main` on 5.0.13
+    (the installed version). It fixes `depth_image_proc`, and only that package is built from it.
+    - The bug: `point_cloud_xyzrgb` resizes a larger RGB image to the depth size, then drops the
+      frame anyway ("Depth resolution ... does not match RGB resolution ...").
+    - Noetic has had these lines commented out since the resize was added (2012). The ROS 2 port
+      (#362, 2018) re-enabled them, and every ROS 2 branch still has them. No upstream report was
+      found.
+    - Without the fix there is no `depth_registered/points` at SXGA RGB and VGA depth.
+  - **`pr2_ros2_bringup`**:
+    - `kinect_head.launch.py` includes `freenect.launch.py` with the robot's ROS 1 settings.
+      `image_mode` and `png_level` come from `config/kinect_head_driver.yaml`.
+    - It also starts `kinect_mode_watchdog.py`, a parameter client in place of the
+      dynamic_reconfigure one.
+    - `c2.launch.py` starts it with argument `kinect` (default true), which `pr2.launch.py` passes
+      through `pr2b_run.py`.
+- **Differences from ROS 1:**
+  - A stream starts up to 0.1 s after its first subscriber. ROS 2's image_transport has no
+    subscriber callbacks, so a 10 Hz check of the subscriber counts runs each publisher's connect
+    callback when its count changes.
+  - Driver parameters that ROS 1 set on the parameter server come from a file, through the new
+    `driver_params_file` argument. The `png_level` name has a leading dot,
+    `.depth_registered.image_raw.compressedDepth.png_level` (image_transport's name relative to
+    the namespace), which rcl's `-p` and therefore `SetParameter` reject.
+  - Default frame ids have no leading `/`, and `kinect_frames` has no `tf_prefix` (tf2 has neither).
+  - `respawn` restarts the container. There are no bonds.
+  - The camera info managers get nodes `rgb` and `ir`, so the `set_camera_info` services keep their
+    ROS 1 names.
+  - A mode change that the device does not support falls back to the default mode, as in ROS 1, and
+    the corrected value is set back to the parameter afterwards.
+  - The Kinect starts with `pr2.launch.py`. In ROS 1 it was started by hand.
+- **Findings:**
+  - The driver's warnings at startup, about no compatible image or depth mode and the fallback to
+    the default, are ROS 1's: no stream runs yet at the first `configCb`. Both defaults are the
+    requested modes.
+  - There are no calibration files (`~/.ros/camera_info/{rgb,depth}_A00365A34357043A.yaml`), so
+    the default intrinsics are used, as in ROS 1.
+  - `projector/camera_info` is published only while the depth stream runs. With registration on,
+    that means while `depth_registered/image_raw` has subscribers, as in ROS 1.
+  - A `depth_registered/points` cloud is 9.8 MB: 640 x 480 points, NaN included, at 32 bytes. At
+    10 Hz that is about 770 Mbit/s, so c1 gets about 3 Hz over the gigabit link (Fast DDS defaults).
+    Consumers on another machine should use the images (the compressedDepth `png_level` 2 is for
+    that) and build the cloud locally.
+- **Verified on the robot:** with `libfreenect-dev`, `ros-jazzy-camera-info-manager`,
+  `-image-proc`, `-depth-image-proc` and `-image-transport-plugins`, from `pr2.launch.py`. Measured
+  on c2:
+  - `depth_registered/image_raw` at 30 Hz, `rgb/image_color` (1280 x 1024) at 10 Hz,
+    `depth_registered/points` at 10 Hz, and `/base_scan` unaffected at 40 Hz;
+  - `image_mode` is 1;
+  - the container uses about 50 % of one core while streaming the cloud.
+
+  From c1, the images arrive at full rate.
+- **Open:** camera calibration; the Orbbec (`2bc5:0402`) on c2; Fast DDS large-data settings if
+  something on c1 needs the full cloud rate; an upstream issue or PR for the `depth_image_proc`
+  bug.

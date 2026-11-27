@@ -10,9 +10,17 @@ repositories:
     type: git
     url: https://github.com/pr2-config-iai/eml-release.git
     version: ros-jazzy-main
+  freenect_stack:
+    type: git
+    url: https://github.com/pr2-config-iai/freenect_stack.git
+    version: ros-jazzy-main
   iai_pr2:
     type: git
     url: https://github.com/code-iai/iai_pr2.git
+    version: ros-jazzy-main
+  image_pipeline:
+    type: git
+    url: https://github.com/pr2-config-iai/image_pipeline.git
     version: ros-jazzy-main
   pr2_common:
     type: git
