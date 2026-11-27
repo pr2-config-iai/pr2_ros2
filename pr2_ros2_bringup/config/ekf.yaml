@@ -1,0 +1,27 @@
+# robot_localization's ekf_node in place of ROS 1's robot_pose_ekf (pr2_bringup/pr2.launch),
+# decision D36: TF odom_combined -> base_footprint for amcl.
+#
+# ROS 1 fused base_odometry/odom with the torso IMU (torso_lift_imu/data); the IMU driver
+# (microstrain_3dmgx2_imu) is not ported yet, so for now only the odometry goes in. Its pose is in
+# frame "odom", which is not in TF, so the filter takes the velocities (twist, in base_footprint
+# since the message has no child frame) and integrates them.
+ekf_node:
+  ros__parameters:
+    frequency: 30.0                       # robot_pose_ekf freq
+    sensor_timeout: 1.0                   # robot_pose_ekf sensor_timeout
+    two_d_mode: true
+    publish_tf: true
+    map_frame: map
+    odom_frame: odom_combined
+    base_link_frame: base_footprint
+    world_frame: odom_combined
+    print_diagnostics: false
+
+    odom0: /base_odometry/odom
+    #             x      y      z      roll   pitch  yaw
+    #             vx     vy     vz     vroll  vpitch vyaw
+    #             ax     ay     az
+    odom0_config: [false, false, false, false, false, false,
+                   true,  true,  false, false, false, true,
+                   false, false, false]
+    odom0_queue_size: 10

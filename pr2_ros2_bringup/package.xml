@@ -24,6 +24,10 @@
   <exec_depend>pr2_run_stop_auto_restart</exec_depend>
   <exec_depend>rqt_pr2_dashboard</exec_depend>
   <exec_depend>urg_node</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>nav2_lifecycle_manager</exec_depend>
+  <exec_depend>nav2_map_server</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

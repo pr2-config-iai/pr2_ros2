@@ -14,9 +14,11 @@
   base_controller, base_odometry, r_gripper_controller, l_gripper_controller.
 - grippers.launch.py: the gripper action servers.
 - teleop.launch.py: the joystick (DS4 on /dev/input/js0): base and grippers.
-- hokuyos.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's
-  container ubuntu2404b by pr2b_run.py, which stops it again with this launch (D35). Only the base
-  laser by default; tilt_laser:=true adds the tilt laser.
+- robot_localization's ekf_node in place of ROS 1's robot_pose_ekf: TF odom_combined ->
+  base_footprint, from the odometry only until the IMU is ported (D36).
+- c2.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's container
+  ubuntu2404b by pr2b_run.py, which stops it again with this launch (D35). The base laser
+  (tilt_laser:=true adds the tilt laser) and, with localization, map server and amcl (D36).
 
 Once every spawner has finished, a "PR2 is ready" line says so, or names the controllers that
 did not start.
@@ -27,14 +29,14 @@ did not start.
         commanded_joints:=head_pan_joint,head_tilt_joint max_effort_fraction:=0.6
     # read-only:
     ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false
-    # without c2 (then hokuyos.launch.py can be started there by hand):
-    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false
+    # without c2 (then c2.launch.py can be started there by hand):
+    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, RegisterEventHandler
 from launch.event_handlers import OnProcessExit
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackagePrefix, FindPackageShare
 
@@ -101,6 +103,8 @@ def generate_launch_description():
                               description='Start hokuyos.launch.py on c2 (pr2b) over ssh'),
         DeclareLaunchArgument('tilt_laser', default_value='false',
                               description='With hokuyos: also the tilt laser (unused with ROS 1)'),
+        DeclareLaunchArgument('localization', default_value='true',
+                              description='ekf_node on c1, map server and amcl on c2 (pr2b)'),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'power_board.launch.py')),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'diagnostics.launch.py')),
         IncludeLaunchDescription(
@@ -115,11 +119,18 @@ def generate_launch_description():
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'grippers.launch.py'), condition=start_controllers),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'teleop.launch.py'),
                                  condition=IfCondition(LaunchConfiguration('teleop'))),
+        Node(
+            package='robot_localization', executable='ekf_node', name='ekf_node', output='screen',
+            parameters=[PathJoinSubstitution([FindPackageShare('pr2_ros2_bringup'), 'config', 'ekf.yaml'])],
+            condition=IfCondition(LaunchConfiguration('localization'))),
         ExecuteProcess(
-            name='pr2b_hokuyos',
+            name='pr2b',
             cmd=[PathJoinSubstitution([FindPackagePrefix('pr2_ros2_bringup'), 'lib', 'pr2_ros2_bringup', 'pr2b_run.py']),
-                 '--', 'ros2', 'launch', 'pr2_ros2_bringup', 'hokuyos.launch.py',
-                 ['tilt_laser:=', LaunchConfiguration('tilt_laser')]],
-            condition=IfCondition(LaunchConfiguration('hokuyos')),
+                 '--', 'ros2', 'launch', 'pr2_ros2_bringup', 'c2.launch.py',
+                 ['hokuyos:=', LaunchConfiguration('hokuyos')],
+                 ['tilt_laser:=', LaunchConfiguration('tilt_laser')],
+                 ['localization:=', LaunchConfiguration('localization')]],
+            condition=IfCondition(PythonExpression(["'", LaunchConfiguration('hokuyos'), "'.lower() == 'true' or '",
+                                                    LaunchConfiguration('localization'), "'.lower() == 'true'"])),
             output='screen'),
     ])

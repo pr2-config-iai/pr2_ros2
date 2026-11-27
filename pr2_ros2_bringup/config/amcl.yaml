@@ -1,0 +1,54 @@
+# nav2_amcl with the parameters of IAI's ROS 1 amcl (iai_pr2_bringup/launch/amcl_node.xml, started by
+# pr2_map_joy_amcl.launch), decision D36. Names that changed in nav2 are noted; everything ROS 1 left
+# at its default is given explicitly where nav2's default differs from ROS 1's.
+amcl:
+  ros__parameters:
+    scan_topic: /base_scan                # ROS 1: remap scan:=base_scan
+    map_topic: map
+    global_frame_id: map
+    odom_frame_id: odom_combined          # robot_pose_ekf's frame in ROS 1; robot_localization here
+    base_frame_id: base_footprint
+    tf_broadcast: true
+    transform_tolerance: 0.1              # ROS 1 sets it twice (0.2, then 0.1); the last one counts
+
+    # odom_model_type omni-corrected: nav2's OmniMotionModel is the same math (sqrt of the
+    # variances, same alpha indices), not ROS 1's uncorrected omni.
+    robot_model_type: nav2_amcl::OmniMotionModel
+    alpha1: 1.0                           # odom_alpha1..5
+    alpha2: 1.0
+    alpha3: 1.0
+    alpha4: 1.0
+    alpha5: 1.0
+
+    min_particles: 500
+    max_particles: 3000
+    pf_err: 0.05                          # kld_err
+    pf_z: 0.95                            # kld_z
+    resample_interval: 1
+    recovery_alpha_slow: 0.001
+    recovery_alpha_fast: 0.1
+    update_min_d: 0.01
+    update_min_a: 0.01
+    save_pose_rate: 0.5                   # ROS 1 default
+
+    laser_model_type: beam
+    max_beams: 100                        # laser_max_beams
+    laser_min_range: 0.1
+    laser_max_range: 30.0
+    z_hit: 0.85                           # laser_z_hit etc.
+    z_short: 0.05
+    z_max: 0.05
+    z_rand: 0.05
+    sigma_hit: 0.2                        # laser_sigma_hit
+    lambda_short: 0.1                     # laser_lambda_short
+    laser_likelihood_max_dist: 2.0        # only for likelihood_field
+    do_beamskip: false                    # ROS 1 defaults
+    beam_skip_distance: 0.5
+    beam_skip_threshold: 0.3
+    beam_skip_error_threshold: 0.9
+
+    # ROS 1 started at (0, 0, 0) with initial_cov_xx/yy 0.25 (defaults) and initial_cov_aa 0.2; nav2
+    # has no initial covariance parameters and waits for an initial pose (RViz "2D Pose Estimate"
+    # on /initialpose) before it publishes map -> odom_combined.
+    set_initial_pose: false
+    first_map_only: false

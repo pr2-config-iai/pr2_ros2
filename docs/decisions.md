@@ -929,3 +929,53 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   agree), 1041 beams, plausible ranges, `base_laser_link` 0.275 m ahead of and 0.252 m above
   `base_link`; urg_node reports "Sensor works well." and 0 retrieve errors, and Lasers / Base
   Hokuyo is OK on the dashboard aggregator.
+
+## D36: Localization: robot_localization on c1, nav2 map server and amcl on c2
+
+- **Status:** accepted (2026-11-27)
+- **Context:** IAI localized the ROS 1 robot with `iai_pr2_bringup/launch/pr2_map_joy_amcl.launch`:
+  `map_server` with `maps/pr2_apartment_map-07-09-2022.yaml` and `amcl` on c2 (beam model,
+  `omni-corrected`, 500 to 3000 particles, `base_footprint` in `odom_combined`). `odom_combined`
+  came from `robot_pose_ekf` on c1 (`pr2_bringup/pr2.launch`), which fused `base_odometry/odom` with
+  the torso IMU (`microstrain_3dmgx2_imu`). Jazzy has no `robot_pose_ekf`, and its
+  `microstrain_inertial_driver` only speaks the protocol of the GX3/4/5, not the GX2's.
+  `Pr2Odometry`'s own TF cannot stand in: as in ROS 1 it goes `base_footprint` -> `odom` (the robot
+  as parent, which is why ROS 1 ran it with `publish_tf: false`), and its topic name follows
+  `odom_frame`.
+- **Decision:**
+  - robot_localization's `ekf_node` on c1 (`config/ekf.yaml`) replaces `robot_pose_ekf`, with the
+    odometry only until the IMU is ported: 30 Hz, sensor timeout 1 s (as ROS 1), 2D, TF
+    `odom_combined` -> `base_footprint`. The odometry's pose is in frame `odom`, which is not in TF,
+    so the filter integrates its velocities (vx, vy, vyaw, in `base_footprint` as the message has no
+    child frame) instead of robot_pose_ekf's pose differences.
+  - nav2's `map_server`, `amcl` and a lifecycle manager on c2 (`launch/localization.launch.py`,
+    `config/amcl.yaml`) with ROS 1's parameters under their nav2 names. `omni-corrected` becomes
+    `nav2_amcl::OmniMotionModel`: the code of both is the same (standard deviations as the square
+    root of the alpha-weighted sums, same alpha indices), unlike ROS 1's uncorrected `omni`.
+    `transform_tolerance` is 0.1, the second of ROS 1's two settings.
+  - The map is copied unchanged into `pr2_ros2_bringup/maps` (`iai_pr2_bringup` is a catkin
+    package in a code-iai repo).
+  - `c2.launch.py` (like ROS 1's `pr2-c2.launch`) starts everything on c2: the Hokuyos and the
+    localization. `pr2.launch.py` starts it through `pr2b_run.py` (D35), in place of
+    `hokuyos.launch.py`, and the EKF on c1; argument `localization` (default true) switches both.
+- **Differences from ROS 1:**
+  - No IMU in the filter, and a different filter (above).
+  - ROS 1's amcl started localizing at (0, 0, 0) with covariance 0.25 / 0.25 / 0.2 (`initial_cov_aa`);
+    nav2's has no initial covariance parameters and publishes `map` -> `odom_combined` only after an
+    initial pose arrives (RViz "2D Pose Estimate"). A one-shot ROS 1 start pose was considered and
+    not added. ROS 1's amcl also took its last pose back from the parameter server after a restart;
+    nav2's keeps it only within its process.
+  - The filter's output is `/odometry/filtered` instead of `/robot_pose_ekf/odom_combined`; nav2
+    publishes the particle cloud on every update (ROS 1: `gui_publish_rate` 10 Hz).
+- **Findings:**
+  - The map (2464 x 1600 cells at 0.0125 m, 3.9 MB) is published once, `TRANSIENT_LOCAL` (ROS 2's
+    latching); it reaches c1 within 1 s. RViz's Map display subscribes `VOLATILE` by default and then
+    shows nothing: set its Durability Policy to Transient Local.
+  - On an initial pose amcl warns "Failed to transform initial pose in time (extrapolation into the
+    future)": it looks the odometry up at the pose's time, newer than the 30 Hz filter's last
+    output, and then uses the latest transform. ROS 1's amcl has the same fallback; harmless.
+- **Verified on the robot:** with `ros-jazzy-robot-localization` on c1 and `ros-jazzy-nav2-amcl`,
+  `-nav2-map-server` and `-nav2-lifecycle-manager` on c2, from `pr2.launch.py`: the map shows in
+  RViz, amcl takes the initial pose and localizes, and `map` -> `odom_combined` -> `base_footprint`
+  matches `/amcl_pose`.
+- **Open:** the IMU (a GX2 driver port) into the filter.
