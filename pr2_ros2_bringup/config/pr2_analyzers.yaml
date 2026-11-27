@@ -2,8 +2,8 @@
 #
 # Taken from ROS 1 pr2_bringup/config/pr2_analyzers.yaml, but only with the groups whose
 # diagnostics ROS 2 publishes so far: every expected item that nobody publishes would hold the
-# dashboard's diagnostics icon at error. Add the remaining ROS 1 groups (Cameras, Computers,
-# Joints) back as their drivers are ported, and the tilt Hokuyo to Lasers.
+# dashboard's diagnostics icon at error. Add the remaining ROS 1 groups (Cameras, Joints) back as
+# their drivers are ported, and the tilt Hokuyo to Lasers.
 diag_agg:
   ros__parameters:
     motors:
@@ -105,3 +105,34 @@ diag_agg:
           path: IMU
           find_and_remove_prefix: ['imu_node']
           num_items: 4
+    # ROS 1's Computers group (pr2_computer_monitor, D44), without Network (wifi_monitor, not
+    # ported). The expected items are the ones the monitors publish: ROS 1 expected 'NTP offset from
+    # c1 to 10.68.255.1', but its pr2.launch checks 0.de.pool.ntp.org, and did not expect c2's HD
+    # Usage, which its pr2-c2.launch did publish.
+    computers:
+      type: diagnostic_aggregator/AnalyzerGroup
+      path: Computers
+      analyzers:
+        cpu:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: CPU
+          startswith: ['c1 CPU', 'c1 HD', 'c2 CPU', 'c2 HD']
+          expected: [
+              'c1 CPU Temperature',
+              'c1 CPU Usage',
+              'c1 HD Temperature',
+              'c1 HD Usage',
+              'c2 CPU Temperature',
+              'c2 CPU Usage',
+              'c2 HD Temperature',
+              'c2 HD Usage']
+        clocks:
+          type: diagnostic_aggregator/GenericAnalyzer
+          path: Clocks
+          timeout: 20.0
+          startswith: ['NTP offset from', 'NTP self-offset for']
+          expected: [
+              'NTP offset from c1 to 0.de.pool.ntp.org',
+              'NTP offset from c2 to c1',
+              'NTP self-offset for c1',
+              'NTP self-offset for c2']

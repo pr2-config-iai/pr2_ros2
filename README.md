@@ -5,7 +5,8 @@ Workspace-level repository for porting the IAI PR2 from ROS 1 Noetic to ROS 2 Ja
 - [`pr2_ros2.repos`](pr2_ros2.repos): the repositories and branches that make up the ROS 2 workspace.
 - [`docs/decisions.md`](docs/decisions.md): the decisions we make along the way and why.
 - [`pr2_ros2_bringup`](pr2_ros2_bringup): launch files and config for the robot (so far: the Hokuyo
-  lasers, the power board, diagnostics and dashboard aggregation, the controllers and teleop).
+  lasers, the power board, diagnostics and dashboard aggregation, the computer monitors, the
+  controllers and teleop).
 
 ## Running
 
@@ -13,8 +14,9 @@ On c1, in a container shell, one launch file starts everything that runs there (
 board (with the e-stop auto restart), the diagnostic and dashboard aggregators, the motor chain
 with commanding enabled for every joint that has a controller (effort fraction 1.0), the arm,
 torso, head, base, odometry and gripper controllers, the gripper action servers and the joystick
-teleop, the odometry filter, and, over ssh on c2, the base Hokuyo (D35), map server and amcl
-(D36) and the head Kinect (D37). It logs `PR2 is ready` once every controller is
+teleop, the odometry filter, the computer monitors (D44), and, over ssh on c2, the base Hokuyo
+(D35), map server and amcl (D36), the head Kinect (D37), the battery servers (D38) and c2's
+computer monitors. It logs `PR2 is ready` once every controller is
 active; the motors stay halted until the e-stop is released.
 
 ```bash
@@ -22,7 +24,8 @@ ros2 launch pr2_ros2_bringup pr2.launch.py
 ros2 launch pr2_ros2_bringup pr2.launch.py start_controllers:=false teleop:=false \
     commanded_joints:=head_pan_joint,head_tilt_joint max_effort_fraction:=0.6   # one group, for tests
 ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false  # read-only
-ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false  # without c2
+ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false \
+    batteries:=false computer_monitor:=false  # without c2
 ros2 launch pr2_ros2_bringup pr2.launch.py -s                 # all arguments
 ```
 
@@ -43,7 +46,8 @@ one on c2 (pr2b), `ubuntu2404b`, for the Hokuyos (D35; it needs `ros-jazzy-urg-n
 `ros-jazzy-nav2-map-server`, `ros-jazzy-nav2-lifecycle-manager`, `libfreenect-dev`,
 `ros-jazzy-camera-info-manager`, `ros-jazzy-image-proc`, `ros-jazzy-depth-image-proc`,
 `ros-jazzy-image-transport-plugins`, and ssh from c1 to `pr2b` without a
-prompt). c1's container needs `ros-jazzy-robot-localization`. Both use the same workspace, since the home directory is shared.
+prompt). c1's container needs `ros-jazzy-robot-localization`; both need `sysstat` and
+`ntpsec-ntpdate` for the computer monitors (D44). Both use the same workspace, since the home directory is shared.
 
 `~/.bashrc` is shared with the host, and distrobox copies the host's environment into the
 container. To get a clean Jazzy environment with the workspace in container shells (decisions D13,
@@ -84,6 +88,7 @@ src/pr2_ethercat_drivers/pr2_ros2_control/tools/install_pr2_rt.sh   # once: real
 | Head Kinect (`freenect_stack`, on c2) | ported, with rgbd_launch's processing and ROS 1's settings and watchdog, started from `pr2.launch.py`; registered point cloud at 10 Hz with the `depth_image_proc` fix of our `image_pipeline` fork (D37); no calibration (as ROS 1) |
 | Batteries (`ocean_battery_driver` on c2, `power_monitor` on c1) | ported, started from `pr2.launch.py`; all 4 IBPS and their diagnostics in Power System, `power_state` from the advanced estimator (D38); port 3 reports no batteries (as it would in ROS 1) |
 | Torso IMU (`microstrain_3dmgx2_imu`, `imu_monitor`, on c1) | ported from upstream's ROS 2 branch, made to behave as ROS 1 (names, single thread), started from `pr2.launch.py`; tested on the robot (rate, stamps, self test, calibrate), its yaw changes in the EKF (D42, D43) |
+| Computer monitors (`pr2_computer_monitor`, on c1 and c2) | ported, started from `pr2.launch.py`: NTP (ntpsec's `ntpdate`), CPU temperature and usage (`mpstat`, missing under ROS 1), drive temperature (hwmon instead of hddtemp) and disk usage; Computers group in the diagnostics (D44). c2's clock follows internet servers instead of c1 (WARN, about 4 ms) |
 | Other cameras, F/T sensors, motorconf | not started |
 
 ## Known issues on the ROS 1 side

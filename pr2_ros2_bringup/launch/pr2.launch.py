@@ -24,7 +24,9 @@
 - c2.launch.py, on c2 (pr2b), where the lasers are plugged in: started over ssh in c2's container
   ubuntu2404b by pr2b_run.py, which stops it again with this launch (D35). The base laser
   (tilt_laser:=true adds the tilt laser), with localization map server and amcl (D36), with
-  kinect the head Kinect (D37), and with batteries the battery servers (D38).
+  kinect the head Kinect (D37), with batteries the battery servers (D38), and with
+  computer_monitor c2's computer monitors.
+- computer_monitor.launch.py: c1's NTP, CPU and disk monitors (pr2_computer_monitor, D44).
 
 Once every spawner has finished, a "PR2 is ready" line says so, or names the controllers that
 did not start.
@@ -36,7 +38,8 @@ did not start.
     # read-only:
     ros2 launch pr2_ros2_bringup pr2.launch.py commanding_enabled:=false start_controllers:=false
     # without c2 (then c2.launch.py can be started there by hand):
-    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false batteries:=false
+    ros2 launch pr2_ros2_bringup pr2.launch.py hokuyos:=false localization:=false kinect:=false batteries:=false \\
+        computer_monitor:=false
 """
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo, RegisterEventHandler
@@ -117,6 +120,8 @@ def generate_launch_description():
                               description='Start the head Kinect on c2 (pr2b)'),
         DeclareLaunchArgument('batteries', default_value='true',
                               description='Start the battery servers on c2 (pr2b)'),
+        DeclareLaunchArgument('computer_monitor', default_value='true',
+                              description='Start the NTP, CPU and disk monitors on c1 and c2 (pr2b)'),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'power_board.launch.py')),
         # The battery history of the advanced estimator: ROS 1's /var/ros/power_monitor/power.log on
         # the host (c1's container sees the host's /var/ros under /run/host).
@@ -124,6 +129,9 @@ def generate_launch_description():
              parameters=[{'advanced_log_file': '/run/host/var/ros/power_monitor/power.log'}],
              output='screen'),
         IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'diagnostics.launch.py')),
+        IncludeLaunchDescription(launch_file('pr2_ros2_bringup', 'computer_monitor.launch.py'),
+                                 launch_arguments={'computer': 'c1'}.items(),
+                                 condition=IfCondition(LaunchConfiguration('computer_monitor'))),
         IncludeLaunchDescription(
             launch_file('pr2_ros2_control', 'pr2_control.launch.py'),
             launch_arguments={
@@ -171,10 +179,12 @@ def generate_launch_description():
                  ['tilt_laser:=', LaunchConfiguration('tilt_laser')],
                  ['localization:=', LaunchConfiguration('localization')],
                  ['kinect:=', LaunchConfiguration('kinect')],
-                 ['batteries:=', LaunchConfiguration('batteries')]],
+                 ['batteries:=', LaunchConfiguration('batteries')],
+                 ['computer_monitor:=', LaunchConfiguration('computer_monitor')]],
             condition=IfCondition(PythonExpression(["'", LaunchConfiguration('hokuyos'), "'.lower() == 'true' or '",
                                                     LaunchConfiguration('localization'), "'.lower() == 'true' or '",
                                                     LaunchConfiguration('kinect'), "'.lower() == 'true' or '",
-                                                    LaunchConfiguration('batteries'), "'.lower() == 'true'"])),
+                                                    LaunchConfiguration('batteries'), "'.lower() == 'true' or '",
+                                                    LaunchConfiguration('computer_monitor'), "'.lower() == 'true'"])),
             output='screen'),
     ])

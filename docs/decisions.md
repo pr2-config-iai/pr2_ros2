@@ -1314,3 +1314,64 @@ Status values: **accepted**, **open** (still being discussed), **superseded by D
   joystick) and check yaw sign and rate of `/odometry/filtered` against the odometry and the IMU,
   and that the filtered yaw follows the IMU while turning; ideally the same turn under ROS 1 for
   comparison.
+
+## D44: The computer monitors: pr2_computer_monitor ported, with ntpsec, mpstat and hwmon
+
+- **Status:** accepted (2026-11-27)
+- **Context:** ROS 1 started `pr2_computer_monitor`'s `ntp_monitor.py`, `cpu_monitor.py` and
+  `hd_monitor.py` on c1 (`pr2_bringup/pr2.launch`) and on c2 (`pr2-c2.launch`), for the Computers
+  group of the diagnostics. What they actually reported under ROS 1 (logs of 2026-11-25/26, the
+  baseline bag of D6):
+  - c1 ran `pr2_fixes`' copy. NTP worked (0.de.pool.ntp.org and itself). CPU Temperature held only
+    the clock speeds (IPMI, core temperatures and clock enforcement off). CPU Usage was always
+    "Unable to Check CPU Usage": `mpstat` is not installed on either computer. `hd_monitor` died at
+    startup: no hddtemp daemon runs, and the error path then calls `isnumeric()` on an int, so c1
+    published no HD items at all.
+  - c2 ran Noetic's stock copy, whose Python 3 bytes/str bugs broke all three: `ntp_monitor`
+    crashed, `cpu_monitor` and `hd_monitor` logged a traceback for every check.
+  - In Ubuntu 24.04, `ntpdate` is ntpsec's shim over `ntpdig`, with different output
+    (`<date> <time> (<tz>) <offset> +/- <error> <host> ...` instead of `... offset <offset>, ...`).
+    `hddtemp` is gone. Both drives (c1 Samsung 990 PRO, c2 Samsung 980) are NVMe, and the kernel's
+    `nvme` hwmon sensor gives their temperatures without root.
+- **Decision (the user chose each point):**
+  - Port the three scripts in our pr2_robot fork from `pr2_fixes`, rclpy, ament_cmake. Same checks,
+    thresholds, item names and keys. ROS 2 needs these changes:
+    - rclpy's `DiagnosticStatus` level constants are `bytes`, and an int level aborts
+      serialization. `cpu_monitor` and `hd_monitor` therefore compute with int levels, as ROS 1
+      did, and convert them when publishing. A `Time Since Last Update` value is now `'0'` instead
+      of the int `0`, because rclpy rejects non-string values; ROS 1 replaced it before publishing.
+    - The `cpu_monitor` parameters accept ints and floats, as in ROS 1.
+  - `ntp_monitor` parses ntpsec's output (install `ntpsec-ntpdate`). The user chose this over
+    running the host's NTP Classic `ntpdate` through the host loader, which also works.
+  - Install `sysstat` (mpstat), so CPU usage, load and memory are checked for real. c2's
+    `num_cores` is 32 (ROS 1: 12, which would now report "Incorrect number of CPU cores").
+  - `hd_monitor` reads drive temperatures from hwmon instead of hddtemp: `nvme` and `drivetemp`
+    sensors, `temp1_input` rounded to whole degrees C, the namespace's or block device's `/dev`
+    name, and the model as Device ID. Thresholds stay at ROS 1's 55/70 C. The error path returns a
+    string, so it no longer kills the node.
+  - Not ported (not started on the robot): `network_detector`, `wifi_monitor.py`,
+    `nvidia_temp.py` and the demo launch files.
+  - `computer_monitor.launch.py computer:=c1|c2` starts the three monitors with ROS 1's node names,
+    arguments and parameters. `pr2.launch.py` includes it for c1 and passes the argument
+    `computer_monitor` (default true) to `c2.launch.py`, which includes it for c2. The ssh to c2
+    also starts for it, so "without c2" now needs `computer_monitor:=false` as well.
+  - The analyzers get ROS 1's Computers group (CPU, Clocks) without Network, expecting what the
+    monitors publish. ROS 1 expected 'NTP offset from c1 to 10.68.255.1' (it checks
+    0.de.pool.ntp.org), and did not expect 'c2 HD Usage'. Matching is by `startswith`, as
+    elsewhere (D14).
+- **Verified (2026-11-27, ROS_DOMAIN_ID 77, isolated from the robot):**
+  - Each node on c1 and in c2's container:
+    - NTP offsets as ROS 1 reports them.
+    - CPU Usage of all 32 cores with load and memory.
+    - HD Temperature: 36 C (c1) and 33 C (c2).
+    - HD Usage of `$HOME`, which on c2 is c1's NFS export, as in ROS 1.
+    - All nodes exit cleanly on SIGINT.
+  - On c1: `computer_monitor.launch.py` with the aggregator. All c1 items are OK under
+    Computers/CPU and Computers/Clocks; the c2 items are Missing, since c2 was not running.
+  - Not yet run: `pr2.launch.py` with c2.
+- **Found:** 'NTP offset from c2 to c1' is WARN, about -3.8 ms against the 500 us tolerance (ROS 1
+  never showed it, since its c2 `ntp_monitor` crashed). c2's chrony has `server c1 ... prefer`, but
+  c1 is not among its sources (`chronyc sources`), so c2 follows internet servers. That is a host
+  setting on c2 (no sudo there).
+- **Needs:** `ntpsec-ntpdate` and `sysstat` in both containers (`rosdep` installs them through the
+  keys `ntpdate` and `sysstat`).

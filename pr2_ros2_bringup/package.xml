@@ -36,6 +36,7 @@
   <exec_depend>power_monitor</exec_depend>
   <exec_depend>microstrain_3dmgx2_imu</exec_depend>
   <exec_depend>imu_monitor</exec_depend>
+  <exec_depend>pr2_computer_monitor</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
